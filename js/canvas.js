@@ -218,6 +218,7 @@ window.fabric = fabric;
 
 // Constants
 const DEFAULT_CURSOR_SIZE = 10;
+const CURSOR_TRAIL_DURATION = 2000; // Trail duration in milliseconds (1 second)
 
 // State variables - these will be initialized after the canvas is created
 let canvas;
@@ -232,9 +233,21 @@ let cursorSize = DEFAULT_CURSOR_SIZE;
 let lastKnownMousePosition = { x: 0, y: 0 };
 let lastLoggedMousePosition = { x: 0, y: 0 };
 const MOUSE_POSITION_TOLERANCE = 3; // Log when position changes by more than 3 pixels
-const CURSOR_TRAIL_DURATION = 1000; // Trail duration in milliseconds (1 second)
 let cursorTrailUpdateTimer; // Timer for updating cursor trail
 let lastTrailCleanup = 0; // Time of last trail cleanup
+
+/**
+ * Initialize the application's cursor trail
+ * Called automatically when document is ready
+ */
+function initCursorTrail() {
+    // Set default state based on checkbox
+    const cursorTrailToggle = document.getElementById('cursor-tail-toggle');
+    if (cursorTrailToggle) {
+        window.cursorTrailEnabled = cursorTrailToggle.checked;
+        updateCursorTrailStatus(false, window.cursorTrailEnabled);
+    }
+}
 
 // Expose canvas to global scope (for backward compatibility)
 window.getCanvas = function() {
@@ -244,7 +257,9 @@ window.getCanvas = function() {
 // Expose key variables to global scope
 window.cursorSize = cursorSize;
 window.showCursorTail = showCursorTail;
-window.cursorTrailEnabled = false; // Track user preference for cursor trail
+window.cursorTrailEnabled = true; // Enable trail by default
+window.initCursorTrail = initCursorTrail; // Make initialization function globally available
+window.renderCursorTrail = renderCursorTrail; // Make render function globally available
 
 /**
  * Calculate distance between two points
@@ -506,7 +521,7 @@ function updateTrailOpacity() {
     // Update opacity of each point based on age
     cursorTrailPoints.forEach(point => {
         const age = now - point.time;
-        // Linear fade based on age
+        // Linear fade based on age over 1 second
         point.opacity = Math.max(0, 1 - (age / CURSOR_TRAIL_DURATION));
     });
 }
@@ -540,53 +555,21 @@ function renderCursorTrail() {
     // Only render if we have points
     if (cursorTrailPoints.length === 0) return;
     
-    // Create a path for the trail
-    const pathPoints = [];
-    
-    // Start with the oldest point that's still visible
+    // Draw dots with decreasing saliency for each point
     cursorTrailPoints.forEach((point, index) => {
-        if (point.opacity <= 0.1) return; // Skip nearly invisible points
+        if (point.opacity <= 0.05) return; // Skip nearly invisible points
         
-        if (pathPoints.length === 0) {
-            // First point - move to
-            pathPoints.push('M', point.x, point.y);
-        } else {
-            // Subsequent points - line to
-            pathPoints.push('L', point.x, point.y);
-        }
-    });
-    
-    // Only create path if we have at least 2 points (move + line)
-    if (pathPoints.length > 4) {
-        const trail = new fabric.Path(pathPoints.join(' '), {
-            stroke: 'rgba(255, 0, 0, 0.7)',
-            strokeWidth: cursorSize * 0.7,
-            fill: '',
-            strokeLineCap: 'round',
-            strokeLineJoin: 'round',
-            selectable: false,
-            evented: false,
-            isCursorTrail: true
-        });
+        // Calculate size based on opacity (decreasing size as the point ages)
+        const dotSize = cursorSize * point.opacity;
         
-        canvas.add(trail);
-    }
-    
-    // Add circles at each point for a more prominent appearance
-    cursorTrailPoints.forEach((point, index) => {
-        if (point.opacity <= 0.1) return; // Skip nearly invisible points
-        
-        // Calculate size based on opacity (fade size as well as opacity)
-        const dotSize = (cursorSize * 0.6) * point.opacity;
-        
-        // Create circle for the cursor point
+        // Create dot for trail point with decreasing saliency
         const circle = new fabric.Circle({
             left: point.x - dotSize/2,
             top: point.y - dotSize/2,
             radius: dotSize/2,
-            fill: `rgba(255, 0, 0, ${point.opacity * 0.5})`,
+            fill: `rgba(255, 0, 0, ${point.opacity * 0.6})`,
             stroke: `rgba(255, 0, 0, ${point.opacity})`,
-            strokeWidth: 1,
+            strokeWidth: 1 * point.opacity, // Thinner stroke for older points
             selectable: false,
             evented: false,
             isCursorTrail: true
@@ -596,20 +579,23 @@ function renderCursorTrail() {
     });
     
     // Always add the current cursor position with full opacity
-    const lastPoint = cursorTrailPoints[cursorTrailPoints.length - 1];
-    const currentCursor = new fabric.Circle({
-        left: lastPoint.x - cursorSize/2,
-        top: lastPoint.y - cursorSize/2,
-        radius: cursorSize/2,
-        fill: 'rgba(255, 0, 0, 0.5)',
-        stroke: 'rgba(255, 0, 0, 1)',
-        strokeWidth: 2,
-        selectable: false,
-        evented: false,
-        isCursorTrail: true
-    });
+    if (cursorTrailPoints.length > 0) {
+        const lastPoint = cursorTrailPoints[cursorTrailPoints.length - 1];
+        const currentCursor = new fabric.Circle({
+            left: lastPoint.x - cursorSize/2,
+            top: lastPoint.y - cursorSize/2,
+            radius: cursorSize/2,
+            fill: 'rgba(255, 0, 0, 0.6)',
+            stroke: 'rgba(255, 0, 0, 1)',
+            strokeWidth: 2,
+            selectable: false,
+            evented: false,
+            isCursorTrail: true
+        });
+        
+        canvas.add(currentCursor);
+    }
     
-    canvas.add(currentCursor);
     canvas.renderAll();
 }
 

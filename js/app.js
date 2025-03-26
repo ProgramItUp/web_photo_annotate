@@ -12,6 +12,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize the application without delay since canvas.js is loaded synchronously now
     initializeApp();
     
+    // Initialize cursor trail
+    if (typeof initCursorTrail === 'function') {
+        initCursorTrail();
+        logMessage('Cursor trail initialized', 'DEBUG');
+    } else {
+        logMessage('initCursorTrail function not available', 'WARN');
+    }
+    
     // Add event listener specifically for the URL load button as requested
     const loadUrlBtn = document.getElementById('load-url-btn');
     if (loadUrlBtn) {
@@ -363,6 +371,12 @@ function updateCursorSize() {
     // Update the global cursor size variable
     window.cursorSize = newSize;
     logMessage(`Cursor size updated to ${newSize}px`, 'DEBUG');
+    
+    // If we have a canvas with a trail, update it immediately
+    if (window.canvas && window.showCursorTail) {
+        // Force redraw of trail with new size
+        renderCursorTrail();
+    }
 }
 
 /**
