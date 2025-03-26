@@ -1,7 +1,7 @@
 /* Canvas and container styles */
 .canvas-container {
     position: relative;
-    margin: 20px 0;
+    margin: 10px 0;
     border: 1px solid #ccc;
     overflow: hidden;
 }
@@ -19,18 +19,36 @@
 
 /* Controls panel styles */
 .controls-panel {
-    padding: 15px;
+    padding: 10px;
     background-color: #f8f9fa;
     border-radius: 5px;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.controls-panel h6 {
+    margin-bottom: 10px;
+    font-weight: 600;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 5px;
+}
+
+.btn-group-vertical .btn {
+    margin-bottom: 2px;
+    text-align: left;
 }
 
 /* Coordinates display */
 .coordinates-display {
     font-family: monospace;
-    padding: 8px;
+    padding: 5px 8px;
     background-color: #f1f1f1;
     border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    border: 1px solid #ddd;
+    color: #333;
 }
 
 /* Recording indicator styles */
@@ -38,16 +56,17 @@
     color: red;
     font-weight: bold;
     display: none;
+    font-size: 0.8rem;
 }
 
 /* Audio volume meter */
 .audio-volume-meter {
     width: 100%;
-    height: 20px;
+    height: 16px;
     background-color: #f1f1f1;
     border-radius: 4px;
     overflow: hidden;
-    margin-top: 10px;
+    margin-top: 8px;
     display: none;
 }
 
@@ -56,4 +75,52 @@
     background-color: #28a745;
     width: 0%;
     transition: width 0.1s ease-in-out;
+}
+
+/* Custom form control sizes */
+.form-control-sm {
+    font-size: 0.875rem;
+}
+
+/* Utility classes */
+.small-text {
+    font-size: 0.8rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .controls-panel {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+    
+    .btn-group-vertical .btn {
+        font-size: 0.75rem;
+    }
+    
+    h6 {
+        font-size: 0.9rem;
+    }
+}
+
+/* Cursor trail status indicators */
+.status-active {
+    background-color: #198754 !important; /* Green background for active status */
+    font-weight: bold;
+}
+
+.status-inactive {
+    background-color: #6c757d !important; /* Gray background for inactive status */
+}
+
+/* Cursor trail toggle styles */
+.cursor-trail-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Laser pointer effect styling */
+.laser-active {
+    cursor: none;
 } 

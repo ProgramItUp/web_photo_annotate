@@ -11,6 +11,63 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize the application without delay since canvas.js is loaded synchronously now
     initializeApp();
+    
+    // Add event listener specifically for the URL load button as requested
+    const loadUrlBtn = document.getElementById('load-url-btn');
+    if (loadUrlBtn) {
+        loadUrlBtn.addEventListener('click', function() {
+            logMessage('Load URL button clicked');
+            loadUrlImage();
+        });
+        logMessage('URL image load button enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find URL load button', 'ERROR');
+    }
+    
+    // Enable image adjustment tools
+    const brightnessSlider = document.getElementById('brightness');
+    const contrastSlider = document.getElementById('contrast');
+    
+    if (brightnessSlider && contrastSlider) {
+        brightnessSlider.addEventListener('input', function() {
+            logMessage(`Brightness adjusted to: ${this.value}`);
+            updateImageFilters();
+        });
+        
+        contrastSlider.addEventListener('input', function() {
+            logMessage(`Contrast adjusted to: ${this.value}`);
+            updateImageFilters();
+        });
+        
+        logMessage('Image adjustment tools enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find image adjustment sliders', 'ERROR');
+    }
+    
+    // Enable cursor size slider
+    const cursorSizeSlider = document.getElementById('cursor-size');
+    if (cursorSizeSlider) {
+        cursorSizeSlider.addEventListener('input', function() {
+            logMessage(`Cursor size adjusted to: ${this.value}`);
+            updateCursorSize();
+        });
+        logMessage('Cursor size adjustment enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find cursor size slider', 'ERROR');
+    }
+    
+    // Enable cursor trail toggle checkbox
+    const cursorTrailToggle = document.getElementById('cursor-tail-toggle');
+    if (cursorTrailToggle) {
+        cursorTrailToggle.addEventListener('change', function() {
+            const enableTrail = this.checked;
+            logMessage(`Cursor trail toggle: ${enableTrail ? 'ON' : 'OFF'}`);
+            toggleCursorTrail(enableTrail);
+        });
+        logMessage('Cursor trail toggle enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find cursor trail toggle', 'ERROR');
+    }
 });
 
 /**
@@ -90,10 +147,23 @@ function loadLocalImage() {
 
 /**
  * Load an image from the URL input
- * Retained function signature but removed implementation
+ * Implemented to enable URL loading functionality
  */
 function loadUrlImage() {
-    logMessage('URL image loading event handling removed', 'DEBUG');
+    const urlInput = document.getElementById('url-image');
+    if (!urlInput) {
+        logMessage('URL input field not found', 'ERROR');
+        return;
+    }
+    
+    const url = urlInput.value.trim();
+    if (!url) {
+        logMessage('No URL provided. Please enter an image URL.', 'WARN');
+        return;
+    }
+    
+    logMessage(`Loading image from URL: ${url}`);
+    loadImageFromUrl(url);
 }
 
 /**
@@ -122,19 +192,28 @@ function loadImageFromUrl(url) {
         return;
     }
     
+    // Show loading indicator
+    logMessage('Loading image, please wait...', 'INFO');
+    
     fabric.Image.fromURL(url, function(img) {
         try {
+            if (!img) {
+                logMessage('Failed to load image from URL', 'ERROR');
+                return;
+            }
+            
             // Clear the canvas
             window.canvas.clear();
             
-            // Calculate scale to fit the canvas
-            const containerWidth = document.getElementById('image-container').offsetWidth;
-            const scale = containerWidth / img.width;
+            // Add the image to the canvas without scaling - the resizeCanvas function will handle this
+            img.set({
+                left: 0,
+                top: 0,
+                originX: 'left',
+                originY: 'top'
+            });
             
-            // Apply the scale and add the image
-            img.scale(scale);
             window.canvas.add(img);
-            window.canvas.centerObject(img);
             
             // Store the original image for potential reset
             window.canvas.setBackgroundImage(img, window.canvas.renderAll.bind(window.canvas));
@@ -142,18 +221,26 @@ function loadImageFromUrl(url) {
             // Resize the canvas to match the image aspect ratio
             if (typeof window.resizeCanvas === 'function') {
                 window.resizeCanvas();
+    } else {
+                logMessage('resizeCanvas function not available', 'ERROR');
             }
             
             // Reset image adjustments
             document.getElementById('brightness').value = 0;
             document.getElementById('contrast').value = 0;
             
-            logMessage(`Image loaded: ${img.width}x${img.height} pixels`, 'DEBUG');
-        } catch (error) {
+            logMessage(`Image loaded successfully: ${img.width}x${img.height} pixels`, 'INFO');
+            } catch (error) {
             console.error('Error loading image:', error);
             logMessage('Error loading image: ' + error.message, 'ERROR');
         }
-    }, { crossOrigin: 'Anonymous' });
+    }, { 
+        crossOrigin: 'Anonymous',
+        // Add error handling for image loading
+        onerror: function() {
+            logMessage(`Failed to load image from URL: ${url}`, 'ERROR');
+        }
+    });
 }
 
 /**
@@ -165,16 +252,30 @@ function logMessage(message, level = 'INFO') {
     const logArea = document.getElementById('log-area');
     if (!logArea) return;
     
+    // Don't log mouse moved messages at debug level for cleaner log
+    if (message.startsWith('Mouse moved:') && level === 'INFO') {
+        level = 'DEBUG';
+    }
+    
     // Format the message with timestamp and level
     const now = new Date();
     const timestamp = now.toISOString();
     const formattedMessage = `[${timestamp}] [${level}] ${message}`;
     
-    // Add message to log area
-    logArea.value += formattedMessage + '\n';
+    // Update coordinates display for cursor position messages (if at debug level)
+    if (level !== 'DEBUG' || !message.startsWith('Mouse moved:')) {
+        // Add message to log area (skip mouse moved debug messages to reduce spam)
+        logArea.value += formattedMessage + '\n';
+        
+        // Auto-scroll to bottom
+        logArea.scrollTop = logArea.scrollHeight;
+    }
     
-    // Auto-scroll to bottom
-    logArea.scrollTop = logArea.scrollHeight;
+    // Always log cursor trail updates regardless of level for better debugging
+    if (message.startsWith('Cursor trail updated:')) {
+        logArea.value += formattedMessage + '\n';
+        logArea.scrollTop = logArea.scrollHeight;
+    }
     
     // Also log to console for debugging
     switch (level) {
@@ -194,18 +295,102 @@ function logMessage(message, level = 'INFO') {
 
 /**
  * Update image filters based on slider values
- * Retained function signature but removed implementation
  */
 function updateImageFilters() {
-    logMessage('Image filter update event handling removed', 'DEBUG');
+    if (!window.canvas) {
+        logMessage('Canvas not available', 'ERROR');
+        return;
+    }
+    
+    const objects = window.canvas.getObjects();
+    const imgObject = objects.find(obj => obj.type === 'image');
+    
+    if (!imgObject) {
+        logMessage('No image loaded to apply filters', 'WARN');
+        return;
+    }
+    
+    try {
+        // Get slider values
+        const brightnessValue = parseInt(document.getElementById('brightness').value) / 100;
+        const contrastValue = parseInt(document.getElementById('contrast').value) / 100;
+        
+        logMessage(`Applying filters: Brightness=${brightnessValue.toFixed(2)}, Contrast=${contrastValue.toFixed(2)}`, 'DEBUG');
+        
+        // Remove existing filters
+        imgObject.filters = [];
+        
+        // Add brightness filter if value is not 0
+        if (brightnessValue !== 0) {
+            imgObject.filters.push(new fabric.Image.filters.Brightness({
+                brightness: brightnessValue
+            }));
+        }
+        
+        // Add contrast filter if value is not 0
+        if (contrastValue !== 0) {
+            imgObject.filters.push(new fabric.Image.filters.Contrast({
+                contrast: contrastValue
+            }));
+        }
+        
+        // Apply filters
+        imgObject.applyFilters();
+        
+        // Redraw the canvas
+        window.canvas.renderAll();
+        
+        logMessage('Image filters updated');
+                } catch (error) {
+        console.error('Error applying image filters:', error);
+        logMessage('Error applying image filters: ' + error.message, 'ERROR');
+    }
 }
 
 /**
  * Update cursor size based on slider value
- * Retained function signature but removed implementation
  */
 function updateCursorSize() {
-    logMessage('Cursor size update event handling removed', 'DEBUG');
+    const cursorSizeSlider = document.getElementById('cursor-size');
+    if (!cursorSizeSlider) {
+        logMessage('Cursor size slider not found', 'ERROR');
+        return;
+    }
+    
+    // Get the current cursor size value
+    const newSize = parseInt(cursorSizeSlider.value);
+    
+    // Update the global cursor size variable
+    window.cursorSize = newSize;
+    logMessage(`Cursor size updated to ${newSize}px`, 'DEBUG');
 }
 
+/**
+ * Toggle cursor trail functionality
+ * @param {boolean} enable - Whether to enable cursor trail
+ */
+function toggleCursorTrail(enable) {
+    // Update the global settings, but the actual drawing still requires mouse down
+    if (typeof window.setCursorTrailEnabled === 'function') {
+        window.setCursorTrailEnabled(enable);
+        
+        // Update UI elements
+        const statusEl = document.getElementById('cursor-trail-status');
+        if (statusEl) {
+            statusEl.textContent = enable ? 'READY' : 'INACTIVE';
+            statusEl.className = enable ? 'ms-2 badge bg-warning' : 'ms-2 badge bg-secondary';
+        }
+        
+        // Update cursor size slider state
+        const cursorSizeSlider = document.getElementById('cursor-size');
+        if (cursorSizeSlider) {
+            cursorSizeSlider.disabled = !enable;
+        }
+        
+        logMessage(`Cursor trail ${enable ? 'enabled' : 'disabled'} - will ${enable ? 'activate' : 'not activate'} on mouse down`);
+    } else {
+        logMessage('setCursorTrailEnabled function not available', 'ERROR');
+    }
+    }
+    
 console.log('=== app.js: LOADING COMPLETED ==='); 

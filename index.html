@@ -67,13 +67,14 @@
                     </div>
                     <div class="mb-2">
                         <label for="cursor-size" class="form-label small">Cursor Size</label>
-                        <input type="range" class="form-range" id="cursor-size" min="1" max="50" value="10">
+                        <input type="range" class="form-range" id="cursor-size" min="1" max="50" value="10" disabled>
                     </div>
                     <div class="mb-2">
                         <label class="form-check-label small">
                             <input type="checkbox" class="form-check-input" id="cursor-tail-toggle">
                             Show cursor trail
                         </label>
+                        <span class="ms-2 badge bg-secondary" id="cursor-trail-status">INACTIVE</span>
                     </div>
                 </div>
                 
@@ -125,7 +126,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <div class="coordinates-display" id="coordinates">Mouse: X: 0, Y: 0</div>
                     <div class="alert alert-info p-1 m-0 small">
-                        <span><strong>Navigation:</strong> Pan: Ctrl+click+drag | Zoom: mouse wheel | <strong>Laser pointer:</strong> hold left click</span>
+                        <span><strong>Cursor trail:</strong> Hold left-click to activate | <strong>Laser pointer:</strong> Enable in Drawing Tools</span>
                     </div>
                 </div>
                 
