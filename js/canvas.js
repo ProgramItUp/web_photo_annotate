@@ -2,13 +2,129 @@
  * Canvas-related functionality for the image annotation application
  */
 
-// State variables
+console.log('=== canvas.js: LOADING STARTED ===');
+
+// Ensure fabric is available globally
+if (typeof fabric === 'undefined') {
+    console.error('ERROR: Fabric.js library not loaded. Canvas initialization will fail!');
+}
+
+// Make sure fabric is available in window object
+window.fabric = fabric;
+
+// Define the functions in the global scope right away to ensure they're available
+// regardless of when the script is fully executed
+(function defineGlobalFunctions() {
+    // Initialize canvas function - define globally at the start
+    window.initializeCanvas = function() {
+        console.log('Global initializeCanvas called');
+        
+        // Create canvas using fabric.js
+        const canvas = new fabric.Canvas('canvas', {
+        width: document.getElementById('image-container').offsetWidth,
+        height: 400,
+        selection: true,
+            preserveObjectStacking: true
+        });
+        
+        // Store canvas globally
+        window.canvas = canvas;
+        
+        // Log initialization
+        if (typeof logMessage === 'function') {
+            logMessage('Canvas initialized with proper global function', 'DEBUG');
+        } else {
+            console.log('Canvas initialized (logMessage not available yet)');
+        }
+        
+        console.log('Canvas initialized and exposed as window.canvas');
+        
+        return canvas;
+    };
+    
+    // Resize canvas function - define globally at the start
+    window.resizeCanvas = function() {
+        console.log('Global resizeCanvas called');
+        
+        if (!window.canvas) {
+            console.error('Canvas not initialized yet');
+            return;
+        }
+        
+        const canvas = window.canvas;
+        
+    // Get the current image object
+    const objects = canvas.getObjects();
+    const imgObject = objects.find(obj => obj.type === 'image');
+    
+    if (!imgObject) {
+        // If no image, just resize to container width
+        canvas.setWidth(document.getElementById('image-container').offsetWidth);
+        canvas.renderAll();
+        return;
+    }
+    
+    // Get the new container width
+    const containerWidth = document.getElementById('image-container').offsetWidth;
+    
+    // Calculate height based on image aspect ratio
+    const aspectRatio = imgObject.height / imgObject.width;
+    const newHeight = containerWidth * aspectRatio * imgObject.scaleX;
+    
+    // Update canvas dimensions
+    canvas.setWidth(containerWidth);
+    canvas.setHeight(newHeight);
+    
+    // Update container height
+    document.getElementById('image-container').style.height = `${newHeight}px`;
+    
+    // Rescale the image to fit the new width
+    const newScaleFactor = containerWidth / imgObject.width;
+    imgObject.scale(newScaleFactor);
+    
+    // Center the image
+    imgObject.set({
+        left: 0,
+        top: 0,
+        originX: 'left',
+        originY: 'top'
+    });
+    
+    // Redraw the canvas
+    canvas.renderAll();
+    
+        if (typeof logMessage === 'function') {
+    logMessage(`Canvas resized to ${containerWidth}x${Math.round(newHeight)} pixels`);
+        }
+    };
+    
+    // Cursor trail update function
+    window.updateCursorTrail = function(pointer) {
+        // Implementation removed as requested
+        if (typeof logMessage === 'function') {
+            logMessage('Cursor trail update event handling removed', 'DEBUG');
+        }
+    };
+    
+    // Log that we've defined the global functions
+    console.log('Global canvas functions defined:', 
+        'initializeCanvas=', typeof window.initializeCanvas,
+        'resizeCanvas=', typeof window.resizeCanvas,
+        'updateCursorTrail=', typeof window.updateCursorTrail
+    );
+})();
+
+// Constants
+const DEFAULT_CURSOR_SIZE = 10;
+
+// State variables - these will be initialized after the canvas is created
 let canvas;
 let isPanning = false;
 let lastPosX;
 let lastPosY;
 let zoomLevel = 1;
 let showCursorTail = false;
+let laserPointerMode = false; // Track when mouse is down for laser pointer mode
 let cursorTrailPoints = [];
 let cursorSize = DEFAULT_CURSOR_SIZE;
 let lastKnownMousePosition = { x: 0, y: 0 };
@@ -16,6 +132,11 @@ let lastLoggedMousePosition = { x: 0, y: 0 };
 const MOUSE_POSITION_TOLERANCE = 3; // Log when position changes by more than 3 pixels
 const CURSOR_TRAIL_DURATION = 1000; // Trail duration in milliseconds (1 second)
 let cursorTrailUpdateTimer; // Timer for updating cursor trail
+
+// Expose canvas to global scope (for backward compatibility)
+window.getCanvas = function() {
+    return window.canvas || canvas;
+};
 
 /**
  * Calculate distance between two points
@@ -41,9 +162,11 @@ function checkAndLogMouseMovement(currentPos) {
 }
 
 /**
- * Initialize the canvas
+ * Initialize the canvas - local implementation
+ * This will be called by the global function if needed
  */
 function initializeCanvas() {
+    console.log('Local initializeCanvas function called');
     canvas = new fabric.Canvas('canvas', {
         width: document.getElementById('image-container').offsetWidth,
         height: 400,
@@ -51,269 +174,111 @@ function initializeCanvas() {
         preserveObjectStacking: true // Keep objects stacked in the order they were added
     });
     
-    // Add mouse event listeners
-    canvas.on('mouse:move', updateCoordinates);
-    canvas.on('mouse:over', canvasMouseEnter);
-    canvas.on('mouse:out', canvasMouseLeave);
+    // Event handlers removed as requested
+    logMessage('Canvas initialized with event handling removed', 'DEBUG');
     
-    // Also add direct DOM event listeners for more reliable tracking
-    canvas.wrapperEl.addEventListener('mousemove', function(e) {
-        // Convert from DOM coordinates to canvas coordinates
-        const rect = canvas.upperCanvasEl.getBoundingClientRect();
-        const pointer = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
-        };
-        updateCoordinatesDirect(pointer);
-    });
-    
-    // Setup pan and zoom handlers
-    setupPanZoomHandlers();
-    
-    // Set default tool
-    setTool('select');
-    
-    // Set up timer to update cursor trail regularly
-    cursorTrailUpdateTimer = setInterval(updateTrailOpacity, 50); // Update every 50ms
+    // Make sure laser pointer is not active until mouse down
+    laserPointerMode = false;
     
     logMessage('Canvas initialized');
+    
+    // Expose the canvas globally for other modules
+    window.canvas = canvas;
 }
 
 /**
- * Resize the canvas to fit the container
+ * Resize the canvas to fit the container while maintaining aspect ratio
+ * Local implementation for backward compatibility
  */
 function resizeCanvas() {
-    canvas.setWidth(document.getElementById('image-container').offsetWidth);
-    canvas.renderAll();
+    console.log('Local resizeCanvas called - forwarding to global implementation');
+    if (typeof window.resizeCanvas === 'function') {
+        window.resizeCanvas();
+    }
 }
 
 /**
  * Setup pan and zoom event handlers for the canvas
+ * (Function kept for compatibility, but implementation removed)
  */
 function setupPanZoomHandlers() {
-    // Pan with Ctrl+click and drag
-    canvas.on('mouse:down', function(opt) {
-        if (opt.e.ctrlKey) {
-            isPanning = true;
-            canvas.selection = false;
-            lastPosX = opt.e.clientX;
-            lastPosY = opt.e.clientY;
-            canvas.setCursor('grabbing');
-        }
-    });
-    
-    canvas.on('mouse:move', function(opt) {
-        if (isPanning && opt.e.ctrlKey) {
-            const deltaX = opt.e.clientX - lastPosX;
-            const deltaY = opt.e.clientY - lastPosY;
-            lastPosX = opt.e.clientX;
-            lastPosY = opt.e.clientY;
-            
-            // Move all objects together
-            const objects = canvas.getObjects();
-            objects.forEach(obj => {
-                obj.left += deltaX;
-                obj.top += deltaY;
-                obj.setCoords();
-            });
-            
-            canvas.renderAll();
-        }
-    });
-    
-    canvas.on('mouse:up', function() {
-        if (isPanning) {
-            isPanning = false;
-            canvas.selection = true;
-            canvas.setCursor('default');
-        }
-    });
-    
-    // Zoom with mouse wheel
-    canvas.on('mouse:wheel', function(opt) {
-        const delta = opt.e.deltaY;
-        let zoom = canvas.getZoom();
-        zoom *= 0.999 ** delta;
-        
-        // Limit zoom level
-        if (zoom > 20) zoom = 20;
-        if (zoom < 0.1) zoom = 0.1;
-        
-        zoomLevel = zoom;
-        
-        // Calculate zoom point (mouse position)
-        const point = new fabric.Point(opt.e.offsetX, opt.e.offsetY);
-        
-        // Apply zoom centered on mouse position
-        canvas.zoomToPoint(point, zoom);
-        
-        opt.e.preventDefault();
-        opt.e.stopPropagation();
-    });
-}
-
-/**
- * Update cursor size from slider
- */
-function updateCursorSize() {
-    cursorSize = parseInt(document.getElementById('cursor-size').value);
-    
-    // Update cursor trail if it exists
-    if (canvas.getActiveObject() && canvas.getActiveObject().type === 'circle' && canvas.getActiveObject().id === 'cursor') {
-        canvas.getActiveObject().set({
-            radius: cursorSize / 2
-        });
-        canvas.renderAll();
-    }
-    
-    logMessage(`Cursor size set to ${cursorSize}`);
+    logMessage('Pan/zoom event handlers removed as requested', 'DEBUG');
 }
 
 /**
  * Handle mouse enter event
- * @param {Object} options - The fabric.js event object
+ * (Function kept for compatibility, but implementation removed)
  */
-function canvasMouseEnter(options) {
-    logMessage('Mouse entered canvas');
-    
-    // Initialize or update lastLoggedMousePosition when the mouse enters
-    const pointer = canvas.getPointer(options.e);
-    lastLoggedMousePosition = {
-        x: pointer.x,
-        y: pointer.y
-    };
-    
-    // Additional logic for mouse enter
+function canvasMouseEnter() {
+    logMessage('Mouse enter event handling removed', 'DEBUG');
 }
 
 /**
  * Handle mouse leave event
- * @param {Object} options - The fabric.js event object
+ * (Function kept for compatibility, but implementation removed)
  */
-function canvasMouseLeave(options) {
-    logMessage('Mouse left canvas');
-    // Update coordinates to show that mouse is outside
-    document.getElementById('coordinates').textContent = 'Mouse: outside canvas';
+function canvasMouseLeave() {
+    logMessage('Mouse leave event handling removed', 'DEBUG');
 }
 
 /**
- * Update coordinates display directly (from DOM events)
- * @param {Object} pointer - The pointer coordinates
+ * Update coordinates display directly from DOM events
+ * (Function kept for compatibility, but implementation removed)
+ * @param {Object} pointer - The canvas pointer coordinates
  */
 function updateCoordinatesDirect(pointer) {
-    const imageCoords = transformCoordinates(pointer);
-    document.getElementById('coordinates').textContent = `Mouse: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`;
-    
-    // Update global mouse position tracker
-    lastKnownMousePosition = {
-        x: pointer.x,
-        y: pointer.y
-    };
-    
-    // Check if significant movement and log if needed
-    checkAndLogMouseMovement(lastKnownMousePosition);
-    
-    // Update cursor trail if enabled
-    if (showCursorTail) {
-        updateCursorTrail(pointer);
-    }
+    logMessage('Coordinate update event handling removed', 'DEBUG');
 }
 
 /**
  * Update coordinates display when mouse moves over canvas
+ * (Function kept for compatibility, but implementation removed)
  * @param {Object} options - The fabric.js event object
  */
 function updateCoordinates(options) {
-    if (!options || !options.e) return;
-    
-    const pointer = canvas.getPointer(options.e);
-    const imageCoords = transformCoordinates(pointer);
-    document.getElementById('coordinates').textContent = `Mouse: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`;
-    
-    // Update global mouse position tracker
-    lastKnownMousePosition = {
-        x: pointer.x,
-        y: pointer.y
-    };
-    
-    // Check if significant movement and log if needed
-    checkAndLogMouseMovement(lastKnownMousePosition);
-    
-    // Update cursor trail if enabled
-    if (showCursorTail) {
-        updateCursorTrail(pointer);
-    }
-    
-    // No longer need random logging since we have tolerance-based logging
-    
-    // Record mouse data if tracking is active
-    if (isRecording && !isPaused) {
-        // We're only adding data 5 times per second, so we don't need to do it on every move
-        // This is handled by the interval in toggleRecording()
-    }
+    logMessage('Coordinate update event handling removed', 'DEBUG');
 }
 
 /**
- * Update cursor trail opacity periodically even when mouse is outside canvas
+ * Update the opacity of cursor trail points to create a fading effect
+ * (Function kept for compatibility, but implementation removed)
  */
 function updateTrailOpacity() {
-    if (showCursorTail && cursorTrailPoints.length > 0) {
-        // Only update opacity without adding new points
-        renderCursorTrail();
-    }
+    // Implementation removed as requested
 }
 
 /**
- * Render the cursor trail dots with current opacity values
+ * Render the cursor trail on canvas
+ * (Function kept for compatibility, but implementation removed)
  */
 function renderCursorTrail() {
-    // Clear existing trail
-    const existingTrail = canvas.getObjects().filter(obj => obj.id && obj.id.startsWith('cursorTrail'));
-    existingTrail.forEach(obj => canvas.remove(obj));
-    
-    // Only keep points from the last CURSOR_TRAIL_DURATION
-    const trailTimeLimit = Date.now() - CURSOR_TRAIL_DURATION;
-    cursorTrailPoints = cursorTrailPoints.filter(point => point.time > trailTimeLimit);
-    
-    // Draw trail as dots with decreasing opacity
-    cursorTrailPoints.forEach((point, index) => {
-        // Calculate age of point in milliseconds
-        const age = Date.now() - point.time;
-        // Calculate opacity based on age (newer points are more opaque)
-        const opacity = 1 - (age / CURSOR_TRAIL_DURATION);
-        // Calculate size based on age (newer points are larger)
-        const size = Math.max(2, cursorSize / 3 * opacity * 2);
-        
-        const dot = new fabric.Circle({
-            left: point.x,
-            top: point.y,
-            radius: size,
-            fill: 'rgba(255, 0, 0, ' + opacity + ')',
-            stroke: null,
-            originX: 'center',
-            originY: 'center',
-            selectable: false,
-            evented: false,
-            id: 'cursorTrail_' + index
-        });
-        
-        canvas.add(dot);
-        dot.bringToFront();
-    });
+    // Implementation removed as requested
 }
 
 /**
- * Update the cursor trail visualization
+ * Update cursor trail with current pointer position
+ * (Function kept for compatibility, but implementation removed)
  * @param {Object} pointer - The canvas pointer coordinates
  */
 function updateCursorTrail(pointer) {
-    // Add current point to trail
-    cursorTrailPoints.push({
-        x: pointer.x,
-        y: pointer.y,
-        time: Date.now()
-    });
-    
-    // Render the trail
-    renderCursorTrail();
-} 
+    // Implementation removed as requested
+}
+
+/**
+ * Update cursor size based on slider value
+ * (Function kept for compatibility, but implementation removed)
+ */
+function updateCursorSize() {
+    logMessage('Cursor size update event handling removed', 'DEBUG');
+}
+
+/**
+ * Set the active tool
+ * (Function kept for compatibility, but implementation removed)
+ * @param {string} toolName - The tool name to set active
+ */
+function setTool(toolName) {
+    logMessage(`Tool selection event handling removed: ${toolName}`, 'DEBUG');
+}
+
+console.log('=== canvas.js: LOADING COMPLETED ==='); 
