@@ -28,7 +28,10 @@ document.addEventListener('DOMContentLoaded', function() {
 function setupEventListeners() {
     // Image loading
     document.getElementById('local-image').addEventListener('change', loadLocalImage);
-    document.getElementById('load-url-btn').addEventListener('click', loadUrlImage);
+    document.getElementById('load-url-btn').addEventListener('click', function() {
+        logMessage('Loading image from URL');
+        loadUrlImage();
+    });
     
     // Image adjustments
     document.getElementById('brightness').addEventListener('input', updateImageFilters);
@@ -40,24 +43,65 @@ function setupEventListeners() {
     });
     
     // Drawing tools
-    document.getElementById('tool-select').addEventListener('click', () => setTool('select'));
-    document.getElementById('tool-dot').addEventListener('click', () => setTool('dot'));
-    document.getElementById('tool-box').addEventListener('click', () => setTool('box'));
-    document.getElementById('tool-circle').addEventListener('click', () => setTool('circle'));
-    document.getElementById('tool-squiggle').addEventListener('click', () => setTool('squiggle'));
-    document.getElementById('tool-arrow').addEventListener('click', () => setTool('arrow'));
-    document.getElementById('delete-selected').addEventListener('click', deleteSelected);
+    document.getElementById('tool-select').addEventListener('click', () => {
+        logMessage('Selected tool: Select');
+        setTool('select');
+    });
+    document.getElementById('tool-dot').addEventListener('click', () => {
+        logMessage('Selected tool: Dot');
+        setTool('dot');
+    });
+    document.getElementById('tool-box').addEventListener('click', () => {
+        logMessage('Selected tool: Box');
+        setTool('box');
+    });
+    document.getElementById('tool-circle').addEventListener('click', () => {
+        logMessage('Selected tool: Circle');
+        setTool('circle');
+    });
+    document.getElementById('tool-squiggle').addEventListener('click', () => {
+        logMessage('Selected tool: Squiggle');
+        setTool('squiggle');
+    });
+    document.getElementById('tool-arrow').addEventListener('click', () => {
+        logMessage('Selected tool: Arrow');
+        setTool('arrow');
+    });
+    document.getElementById('delete-selected').addEventListener('click', () => {
+        logMessage('Deleting selected object');
+        deleteSelected();
+    });
     
     // Audio recording
-    document.getElementById('record-btn').addEventListener('click', toggleRecording);
-    document.getElementById('pause-btn').addEventListener('click', pauseResumeRecording);
+    document.getElementById('record-btn').addEventListener('click', function() {
+        console.log('Record button clicked - isRecording:', isRecording);
+        logMessage(`Button click: ${isRecording ? 'Stop' : 'Start'} Recording`);
+        toggleRecording();
+    });
+    document.getElementById('pause-btn').addEventListener('click', function() {
+        console.log('Pause button clicked - isPaused:', isPaused);
+        logMessage(`Button click: ${isPaused ? 'Resume' : 'Pause'} Recording`);
+        pauseResumeRecording();
+    });
     
     // File operations
-    document.getElementById('save-btn').addEventListener('click', saveAnnotationData);
-    document.getElementById('email-btn').addEventListener('click', showEmailModal);
-    document.getElementById('load-btn').addEventListener('click', () => document.getElementById('load-file').click());
+    document.getElementById('save-btn').addEventListener('click', function() {
+        logMessage('Button click: Save Annotation Data');
+        saveAnnotationData();
+    });
+    document.getElementById('email-btn').addEventListener('click', function() {
+        logMessage('Button click: Email Annotation Data');
+        showEmailModal();
+    });
+    document.getElementById('load-btn').addEventListener('click', () => {
+        logMessage('Button click: Load Annotation Data');
+        document.getElementById('load-file').click();
+    });
     document.getElementById('load-file').addEventListener('change', loadAnnotationData);
-    document.getElementById('replay-btn').addEventListener('click', replayRecording);
+    document.getElementById('replay-btn').addEventListener('click', function() {
+        logMessage('Button click: Replay Recording');
+        replayRecording();
+    });
     
     // Log area
     document.getElementById('clear-log').addEventListener('click', function() {

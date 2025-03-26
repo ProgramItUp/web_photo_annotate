@@ -7,11 +7,16 @@ let brightnessValue = DEFAULT_BRIGHTNESS;
 let contrastValue = DEFAULT_CONTRAST;
 const DEFAULT_IMAGE_PATH = 'https://prod-images-static.radiopaedia.org/images/157210/332aa0c67cb2e035e372c7cb3ceca2_big_gallery.jpg';
 
+console.log('image-tools.js loaded - DEFAULT_IMAGE_PATH:', DEFAULT_IMAGE_PATH);
+
 /**
  * Load the default image when the application starts
  */
 function loadDefaultImage() {
+    console.log('loadDefaultImage called - setting URL input to:', DEFAULT_IMAGE_PATH);
     loadImageToCanvas(DEFAULT_IMAGE_PATH);
+    // Prepopulate the URL input box with the default image URL
+    document.getElementById('url-image').value = DEFAULT_IMAGE_PATH;
     logMessage(`Loaded default image: ${DEFAULT_IMAGE_PATH}`);
 }
 

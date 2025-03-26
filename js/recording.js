@@ -1,26 +1,30 @@
 /**
- * Recording functionality for the image annotation application
+ * Audio recording functionality using MediaStream Recording API
  */
 
 // State variables
-let recorder;
-let mouseTrackingInterval;
-let mouseData = [];
-let audioBlob = null;
+let mediaRecorder = null;
+let audioStream = null;
 let isRecording = false;
 let isPaused = false;
-let audioContext;
-let audioStream;
-let recordingStartTime;
-let recordingTimer;
-let pausedTime = 0;
+let mouseData = [];
+let audioChunks = [];
+let recordingTimerInterval = null;
+let recordingStartTime = 0;
 let pauseStartTime = 0;
-let lastKnownMousePosition = { x: 0, y: 0 }; // Store last known mouse position
+let pausedTime = 0;
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Recording system initialized');
+    logMessage('Recording system initialized');
+});
 
 /**
  * Toggle recording on/off
  */
 function toggleRecording() {
+    console.log('toggleRecording called - current state:', isRecording);
+    
     const recordBtn = document.getElementById('record-btn');
     const pauseBtn = document.getElementById('pause-btn');
     const recordingIndicator = document.getElementById('recording-indicator');
@@ -29,27 +33,24 @@ function toggleRecording() {
     
     if (isRecording) {
         // Stop recording
+        console.log('Stopping recording');
+        
         isRecording = false;
         isPaused = false;
         recordBtn.textContent = 'Start Recording';
         recordBtn.classList.replace('btn-secondary', 'btn-danger');
         pauseBtn.disabled = true;
-        recordingIndicator.style.display = 'none';
-        recordingTimer.style.display = 'none';
-        volumeMeter.style.display = 'none';
+        
+        if (recordingIndicator) recordingIndicator.style.display = 'none';
+        if (recordingTimer) recordingTimer.style.display = 'none'; 
+        if (volumeMeter) volumeMeter.style.display = 'none';
         
         // Stop timer
-        clearInterval(recordingTimer);
-        
-        // Stop mouse tracking
-        clearInterval(mouseTrackingInterval);
+        clearInterval(recordingTimerInterval);
         
         // Stop audio recording
-        if (recorder) {
-            recorder.stopRecording(function() {
-                audioBlob = recorder.getBlob();
-                logMessage(`Audio recording completed: ${Math.round(audioBlob.size / 1024)} KB`);
-            });
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
         }
         
         if (audioStream) {
@@ -57,157 +58,38 @@ function toggleRecording() {
             audioStream = null;
         }
         
-        if (audioContext) {
-            audioContext.close();
-            audioContext = null;
-        }
-        
-        logMessage(`Recording stopped. Captured ${mouseData.length} mouse positions.`);
+        logMessage('Recording stopped');
     } else {
         // Start recording
+        console.log('Starting recording');
+        
+        // Reset recording data
+        audioChunks = [];
+        mouseData = [];
+        pausedTime = 0;
+        
         isRecording = true;
         isPaused = false;
-        pausedTime = 0;
         recordBtn.textContent = 'Stop Recording';
         recordBtn.classList.replace('btn-danger', 'btn-secondary');
         pauseBtn.disabled = false;
-        pauseBtn.textContent = 'Pause Recording';
-        recordingIndicator.style.display = 'inline';
-        recordingIndicator.style.color = 'red';
-        recordingTimer.style.display = 'inline';
-        volumeMeter.style.display = 'block';
         
-        // Reset data
-        mouseData = [];
-        audioBlob = null;
-        recordingStartTime = Date.now();
+        if (recordingIndicator) {
+            recordingIndicator.style.display = 'inline';
+            recordingIndicator.style.color = 'red';
+        }
+        if (recordingTimer) recordingTimer.style.display = 'inline';
+        if (volumeMeter) volumeMeter.style.display = 'block';
         
         // Start recording timer
-        recordingTimer.textContent = '00:00';
-        recordingTimer = setInterval(updateRecordingTimer, 1000);
-        
-        // Start mouse tracking (5 times per second)
-        mouseTrackingInterval = setInterval(function() {
-            if (isPaused) return;
-            
-            // Use the last known mouse position from the global variable
-            const pointer = lastKnownMousePosition || { x: 0, y: 0 };
-            
-            // Log position occasionally for debugging
-            if (mouseData.length % 25 === 0) { // Log every 25th frame
-                logMessage(`Recording mouse position: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`);
-            }
-            
-            mouseData.push({
-                timestamp: Date.now(),
-                x: pointer.x,
-                y: pointer.y,
-                isDown: canvas.isDrawingMode ? canvas.isDrawing : false
-            });
-        }, 200); // 5 times per second = 200ms
+        recordingStartTime = Date.now();
+        if (recordingTimer) recordingTimer.textContent = '00:00';
+        recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
         
         // Start audio recording
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(function(stream) {
-                audioStream = stream;
-                
-                // Create audio context for volume meter
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioContext.createMediaStreamSource(stream);
-                const analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256;
-                source.connect(analyser);
-                
-                // Start volume meter
-                const volumeLevel = document.getElementById('volume-level');
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                
-                function updateVolumeMeter() {
-                    if (!isRecording) return;
-                    
-                    analyser.getByteFrequencyData(dataArray);
-                    let sum = 0;
-                    for (let i = 0; i < dataArray.length; i++) {
-                        sum += dataArray[i];
-                    }
-                    const average = sum / dataArray.length;
-                    const percentage = (average / 255) * 100;
-                    
-                    volumeLevel.style.width = `${percentage}%`;
-                    requestAnimationFrame(updateVolumeMeter);
-                }
-                
-                updateVolumeMeter();
-                
-                // Start recording
-                recorder = RecordRTC(stream, {
-                    type: 'audio',
-                    mimeType: 'audio/webm',
-                    recorderType: RecordRTC.StereoAudioRecorder,
-                    disableLogs: true
-                });
-                recorder.startRecording();
-                
-                logMessage('Audio recording started');
-            })
-            .catch(function(error) {
-                console.error('Error accessing microphone:', error);
-                alert('Error accessing microphone. Please check your permissions.');
-                logMessage('Error accessing microphone: ' + error.message);
-                
-                // Stop recording if microphone fails
-                isRecording = false;
-                recordBtn.textContent = 'Start Recording';
-                recordBtn.classList.replace('btn-secondary', 'btn-danger');
-                pauseBtn.disabled = true;
-                recordingIndicator.style.display = 'none';
-                recordingTimer.style.display = 'none';
-                volumeMeter.style.display = 'none';
-                
-                clearInterval(mouseTrackingInterval);
-            });
+        startAudioRecording();
         
         logMessage('Recording started');
-    }
-}
-
-/**
- * Pause or resume recording
- */
-function pauseResumeRecording() {
-    if (!isRecording) return;
-    
-    const pauseBtn = document.getElementById('pause-btn');
-    const recordingIndicator = document.getElementById('recording-indicator');
-    
-    if (isPaused) {
-        // Resume recording
-        isPaused = false;
-        pauseBtn.textContent = 'Pause Recording';
-        recordingIndicator.style.color = 'red';
-        
-        // Calculate paused duration
-        pausedTime += Date.now() - pauseStartTime;
-        
-        // Resume audio recording if available
-        if (recorder) {
-            recorder.resumeRecording();
-        }
-        
-        logMessage('Recording resumed');
-    } else {
-        // Pause recording
-        isPaused = true;
-        pauseBtn.textContent = 'Resume Recording';
-        recordingIndicator.style.color = 'orange';
-        pauseStartTime = Date.now();
-        
-        // Pause audio recording if available
-        if (recorder) {
-            recorder.pauseRecording();
-        }
-        
-        logMessage('Recording paused');
     }
 }
 
@@ -230,156 +112,238 @@ function updateRecordingTimer() {
 }
 
 /**
- * Save annotation data to file
+ * Start audio recording
  */
-function saveAnnotationData() {
-    // Create canvas snapshot
-    const canvasData = canvas.toJSON();
-    
-    // Create data object
-    const annotationData = {
-        canvasData: canvasData,
-        mouseData: mouseData,
-        hasAudio: audioBlob !== null,
-        timestamp: new Date().toISOString()
-    };
-    
-    // Convert to JSON
-    const jsonData = JSON.stringify(annotationData);
-    
-    // Save JSON file
-    const jsonBlob = new Blob([jsonData], { type: 'application/json' });
-    saveAs(jsonBlob, 'annotation_data.json');
-    
-    // Save audio if available
-    if (audioBlob) {
-        saveAs(audioBlob, 'annotation_audio.webm');
-    }
-    
-    logMessage(`Annotation data saved. Objects: ${canvasData.objects.length}, Mouse positions: ${mouseData.length}, Audio: ${audioBlob ? 'Yes' : 'No'}`);
-}
-
-/**
- * Load annotation data from file
- * @param {Event} e - The file input change event
- */
-function loadAnnotationData(e) {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            try {
-                const data = JSON.parse(event.target.result);
-                
-                // Load canvas data
-                canvas.loadFromJSON(data.canvasData, function() {
-                    // Make sure all annotations are on top of the image
-                    const image = canvas.getObjects().find(obj => obj.type === 'image');
-                    if (image) {
-                        image.sendToBack();
-                    }
-                    
-                    canvas.renderAll();
-                    logMessage(`Loaded annotation data. Objects: ${canvas.getObjects().length}`);
-                });
-                
-                // Load mouse data
-                mouseData = data.mouseData || [];
-                logMessage(`Loaded ${mouseData.length} mouse positions from file`);
-                
-                alert('Annotation data loaded successfully.');
-            } catch (error) {
-                console.error('Error loading annotation data:', error);
-                alert('Error loading annotation data. Please check the file format.');
-                logMessage(`Error loading annotation data: ${error.message}`);
-            }
-        };
-        reader.readAsText(file);
-    }
-}
-
-/**
- * Replay the recorded mouse movements
- */
-function replayRecording() {
-    if (mouseData.length === 0) {
-        alert('No recording data available to replay.');
-        logMessage('Replay failed: No mouse data available');
+function startAudioRecording() {
+    // Check if browser supports getUserMedia
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('getUserMedia not supported');
+        logMessage('ERROR: Browser does not support audio recording');
         return;
     }
     
-    logMessage(`Replaying recording with ${mouseData.length} frames`);
+    console.log('Requesting microphone access...');
+    logMessage('Requesting microphone access...');
     
-    // Create indicator dot
-    const dot = new fabric.Circle({
-        left: 0,
-        top: 0,
-        radius: cursorSize / 2,
-        fill: 'red',
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-        id: 'cursor'
+    navigator.mediaDevices.getUserMedia({ 
+        audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        } 
+    })
+    .then(function(stream) {
+        console.log('Microphone access granted');
+        logMessage('Microphone access granted');
+        audioStream = stream;
+        
+        // Create MediaRecorder
+        try {
+            // Try different mimeTypes
+            let options = {};
+            const mimeTypes = [
+                'audio/webm',
+                'audio/webm;codecs=opus',
+                'audio/ogg;codecs=opus',
+                'audio/mp4'
+            ];
+            
+            // Find the first supported mimeType
+            for (const mimeType of mimeTypes) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                    options.mimeType = mimeType;
+                    console.log(`Using mimeType: ${mimeType}`);
+                    break;
+                }
+            }
+            
+            // Create audio context for volume meter
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            const audioContext = new AudioContext();
+            const source = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
+            // Use a moderate FFT size for good frequency resolution while still being responsive
+            analyser.fftSize = 128; // Medium size for balance between responsiveness and accuracy
+            analyser.smoothingTimeConstant = 0.3; // Increased for smoother response
+            source.connect(analyser);
+            
+            // Start volume meter
+            const volumeLevel = document.getElementById('volume-level');
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            function updateVolumeMeter() {
+                if (!isRecording) return;
+                
+                // Only update when not paused
+                if (!isPaused) {
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // Focus on voice frequencies (approximately bins 2-20 for 128 FFT size)
+                    // Human voice is typically between 85Hz-400Hz
+                    let voiceSum = 0;
+                    let voiceCount = 0;
+                    
+                    // Calculate frequency per bin based on sample rate and FFT size
+                    const sampleRate = audioContext.sampleRate;
+                    const binSize = sampleRate / analyser.fftSize;
+                    
+                    // Loop through frequency data focusing on voice range
+                    for (let i = 0; i < dataArray.length; i++) {
+                        const frequency = i * binSize;
+                        // Weight frequencies in human voice range (85-400Hz) more heavily
+                        if (frequency >= 85 && frequency <= 1000) {
+                            // Apply higher weight to the core voice frequencies
+                            const weight = (frequency >= 150 && frequency <= 400) ? 2.0 : 1.0;
+                            voiceSum += dataArray[i] * weight;
+                            voiceCount += weight;
+                        }
+                    }
+                    
+                    // Calculate weighted average of voice frequencies
+                    const voiceAverage = voiceCount > 0 ? voiceSum / voiceCount : 0;
+                    
+                    // Apply moderate non-linear scaling
+                    const scaledValue = Math.pow(voiceAverage / 255, 0.8) * 100;
+                    
+                    // Apply balanced damping (40% old, 60% new)
+                    const currentWidth = parseFloat(volumeLevel.style.width) || 0;
+                    const newWidth = currentWidth * 0.4 + scaledValue * 0.6;
+                    
+                    volumeLevel.style.width = `${newWidth}%`;
+                }
+                
+                requestAnimationFrame(updateVolumeMeter);
+            }
+            
+            updateVolumeMeter();
+            
+            // Create and start MediaRecorder
+            mediaRecorder = new MediaRecorder(stream, options);
+            
+            mediaRecorder.ondataavailable = function(event) {
+                console.log('Data available event fired');
+                if (event.data && event.data.size > 0) {
+                    audioChunks.push(event.data);
+                    console.log('Received audio chunk');
+                }
+            };
+            
+            mediaRecorder.onstart = function() {
+                console.log('MediaRecorder started');
+                logMessage('Audio recording started');
+            };
+            
+            mediaRecorder.onpause = function() {
+                console.log('MediaRecorder paused');
+                logMessage('Audio recording paused');
+            };
+            
+            mediaRecorder.onresume = function() {
+                console.log('MediaRecorder resumed');
+                logMessage('Audio recording resumed');
+            };
+            
+            mediaRecorder.onstop = function() {
+                console.log('MediaRecorder stopped');
+                
+                if (audioChunks.length > 0) {
+                    const audioBlob = new Blob(audioChunks, { type: options.mimeType || 'audio/webm' });
+                    console.log('Audio recording completed: ' + audioBlob.size + ' bytes');
+                    logMessage('Audio recording completed: ' + audioBlob.size + ' bytes');
+                    
+                    // Save the blob for later use
+                    window.audioBlob = audioBlob;
+                    
+                    // Create an audio element for testing
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    audio.controls = true;
+                    document.body.appendChild(audio);
+                    logMessage('Audio added to page for testing');
+                } else {
+                    console.warn('No audio chunks recorded');
+                    logMessage('Warning: No audio data was captured');
+                }
+            };
+            
+            // Start recording with 100ms timeslice to get data frequently
+            mediaRecorder.start(100);
+            
+        } catch (error) {
+            console.error('Error creating MediaRecorder:', error);
+            logMessage('Error setting up audio recording: ' + error.message);
+        }
+    })
+    .catch(function(error) {
+        console.error('Error accessing microphone:', error);
+        logMessage('Error accessing microphone: ' + error.message);
     });
-    canvas.add(dot);
-    dot.bringToFront();
+}
+
+/**
+ * Pause or resume recording
+ */
+function pauseResumeRecording() {
+    console.log('pauseResumeRecording called - current state:', isRecording, 'isPaused:', isPaused);
     
-    // Create trail elements
-    const trail = new fabric.Path('', {
-        stroke: 'rgba(255, 0, 0, 0.3)',
-        strokeWidth: 2,
-        fill: false,
-        selectable: false,
-        id: 'replayTrail'
-    });
-    canvas.add(trail);
-    trail.bringToFront();
+    if (!isRecording) return;
     
-    let pathData = [];
-    let index = 0;
+    const pauseBtn = document.getElementById('pause-btn');
+    const recordingIndicator = document.getElementById('recording-indicator');
     
-    function playNextFrame() {
-        if (index >= mouseData.length) {
-            setTimeout(() => {
-                canvas.remove(dot);
-                canvas.remove(trail);
-                canvas.renderAll();
-                logMessage('Replay completed');
-            }, 1000);
-            return;
+    if (!isPaused) {
+        // Pause recording
+        isPaused = true;
+        pauseStartTime = Date.now();
+        pauseBtn.textContent = 'Resume Recording';
+        if (recordingIndicator) recordingIndicator.style.color = 'orange';
+        
+        // Pause audio recording
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            try {
+                mediaRecorder.pause();
+                console.log('MediaRecorder paused');
+            } catch (error) {
+                console.error('Error pausing MediaRecorder:', error);
+                logMessage('Error: This browser might not support pausing recordings');
+            }
         }
         
-        const frame = mouseData[index];
-        dot.set({
-            left: frame.x,
-            top: frame.y
-        });
+        logMessage('Recording paused');
+    } else {
+        // Resume recording
+        const pauseDuration = Date.now() - pauseStartTime;
+        pausedTime += pauseDuration;
         
-        // Update trail path
-        if (index === 0) {
-            pathData = ['M', frame.x, frame.y];
-        } else {
-            pathData.push('L', frame.x, frame.y);
+        isPaused = false;
+        pauseBtn.textContent = 'Pause Recording';
+        if (recordingIndicator) recordingIndicator.style.color = 'red';
+        
+        // Resume audio recording
+        if (mediaRecorder && mediaRecorder.state === 'paused') {
+            try {
+                mediaRecorder.resume();
+                console.log('MediaRecorder resumed');
+            } catch (error) {
+                console.error('Error resuming MediaRecorder:', error);
+                logMessage('Error: This browser might not support resuming recordings');
+            }
         }
         
-        // Only keep the last 3 seconds of trail
-        const trailLength = Math.min(15, index); // About 3 seconds at 5 fps
-        if (index > trailLength) {
-            const startIndex = (index - trailLength) * 3; // Each point is 3 elements (M/L, x, y)
-            pathData = ['M', ...pathData.slice(startIndex + 1)];
-        }
-        
-        trail.set({ path: pathData.join(' ') });
-        canvas.renderAll();
-        
-        index++;
-        
-        // Calculate delay for next frame
-        const nextDelay = index < mouseData.length ? 
-            mouseData[index].timestamp - mouseData[index - 1].timestamp : 0;
-        
-        setTimeout(playNextFrame, nextDelay);
+        logMessage('Recording resumed');
     }
-    
-    playNextFrame();
+}
+
+/**
+ * Helper function to log messages
+ */
+function logMessage(message) {
+    const logArea = document.getElementById('log-area');
+    if (logArea) {
+        const timestamp = new Date().toISOString().substring(11, 19);
+        logArea.value += `[${timestamp}] ${message}\n`;
+        logArea.scrollTop = logArea.scrollHeight;
+    } else {
+        console.log(message);
+    }
 } 
