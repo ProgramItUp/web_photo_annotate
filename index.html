@@ -126,6 +126,7 @@
                     <h5>Drawing Tools</h5>
                     <div class="btn-group w-100 mb-3" role="group">
                         <button type="button" class="btn btn-outline-primary" id="tool-select">Select</button>
+                        <button type="button" class="btn btn-outline-primary" id="tool-dot">Dot</button>
                         <button type="button" class="btn btn-outline-primary" id="tool-box">Box</button>
                         <button type="button" class="btn btn-outline-primary" id="tool-circle">Circle</button>
                     </div>
@@ -140,6 +141,7 @@
                 <div class="controls-panel">
                     <h5>Audio Recording</h5>
                     <button class="btn btn-danger w-100 mb-2" id="record-btn">Start Recording</button>
+                    <button class="btn btn-warning w-100 mb-2" id="pause-btn" disabled>Pause Recording</button>
                     <div class="d-flex align-items-center">
                         <span class="recording-indicator" id="recording-indicator">● Recording</span>
                         <span class="ms-auto recording-indicator" id="recording-timer">00:00</span>
@@ -162,6 +164,19 @@
         </div>
     </div>
     
+    <!-- Log Area -->
+    <div class="container mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Log Messages</span>
+                <button class="btn btn-sm btn-outline-secondary" id="clear-log">Clear</button>
+            </div>
+            <div class="card-body">
+                <textarea id="log-area" class="form-control" rows="6" readonly style="font-family: monospace; font-size: 0.875rem;"></textarea>
+            </div>
+        </div>
+    </div>
+
     <!-- Email Modal -->
     <div class="modal fade" id="emailModal" tabindex="-1" aria-labelledby="emailModalLabel" aria-hidden="true">
         <div class="modal-dialog">
@@ -200,6 +215,7 @@
         let audioBlob = null;
         let currentTool = 'select';
         let isRecording = false;
+        let isPaused = false;
         let cursorSize = 10;
         let brightnessValue = 0;
         let contrastValue = 0;
@@ -214,6 +230,16 @@
         let audioStream;
         let recordingStartTime;
         let recordingTimer;
+        let pausedTime = 0;
+        let pauseStartTime = 0;
+
+        // Function to log messages
+        function logMessage(message) {
+            const logArea = document.getElementById('log-area');
+            const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
+            logArea.value += `[${timestamp}] ${message}\n`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
 
         // Initialize on document load
         document.addEventListener('DOMContentLoaded', function() {
@@ -230,6 +256,8 @@
 
             // Setup event listeners
             setupEventListeners();
+            
+            logMessage('Application initialized');
         });
 
         function setupEventListeners() {
@@ -243,10 +271,12 @@
             document.getElementById('cursor-size').addEventListener('input', updateCursorSize);
             document.getElementById('cursor-tail-toggle').addEventListener('change', function() {
                 showCursorTail = this.checked;
+                logMessage(`Cursor trail ${showCursorTail ? 'enabled' : 'disabled'}`);
             });
             
             // Drawing tools
             document.getElementById('tool-select').addEventListener('click', () => setTool('select'));
+            document.getElementById('tool-dot').addEventListener('click', () => setTool('dot'));
             document.getElementById('tool-box').addEventListener('click', () => setTool('box'));
             document.getElementById('tool-circle').addEventListener('click', () => setTool('circle'));
             document.getElementById('tool-squiggle').addEventListener('click', () => setTool('squiggle'));
@@ -255,6 +285,7 @@
             
             // Audio recording
             document.getElementById('record-btn').addEventListener('click', toggleRecording);
+            document.getElementById('pause-btn').addEventListener('click', pauseResumeRecording);
             
             // File operations
             document.getElementById('save-btn').addEventListener('click', saveAnnotationData);
@@ -264,68 +295,17 @@
             document.getElementById('replay-btn').addEventListener('click', replayRecording);
             document.getElementById('send-email-btn').addEventListener('click', sendEmail);
             
+            // Log area
+            document.getElementById('clear-log').addEventListener('click', function() {
+                document.getElementById('log-area').value = '';
+                logMessage('Log cleared');
+            });
+            
             // Mouse tracking on canvas
             canvas.on('mouse:move', updateCoordinates);
             
-            // Pan with Ctrl+click and drag
-            canvas.on('mouse:down', function(opt) {
-                if (opt.e.ctrlKey) {
-                    isPanning = true;
-                    canvas.selection = false;
-                    lastPosX = opt.e.clientX;
-                    lastPosY = opt.e.clientY;
-                    canvas.setCursor('grabbing');
-                }
-            });
-            
-            canvas.on('mouse:move', function(opt) {
-                if (isPanning && opt.e.ctrlKey) {
-                    const deltaX = opt.e.clientX - lastPosX;
-                    const deltaY = opt.e.clientY - lastPosY;
-                    lastPosX = opt.e.clientX;
-                    lastPosY = opt.e.clientY;
-                    
-                    // Move all objects together
-                    const objects = canvas.getObjects();
-                    objects.forEach(obj => {
-                        obj.left += deltaX;
-                        obj.top += deltaY;
-                        obj.setCoords();
-                    });
-                    
-                    canvas.renderAll();
-                }
-            });
-            
-            canvas.on('mouse:up', function() {
-                if (isPanning) {
-                    isPanning = false;
-                    canvas.selection = true;
-                    canvas.setCursor('default');
-                }
-            });
-            
-            // Zoom with mouse wheel
-            canvas.on('mouse:wheel', function(opt) {
-                const delta = opt.e.deltaY;
-                let zoom = canvas.getZoom();
-                zoom *= 0.999 ** delta;
-                
-                // Limit zoom level
-                if (zoom > 20) zoom = 20;
-                if (zoom < 0.1) zoom = 0.1;
-                
-                zoomLevel = zoom;
-                
-                // Calculate zoom point (mouse position)
-                const point = new fabric.Point(opt.e.offsetX, opt.e.offsetY);
-                
-                // Apply zoom centered on mouse position
-                canvas.zoomToPoint(point, zoom);
-                
-                opt.e.preventDefault();
-                opt.e.stopPropagation();
-            });
+            // Setup Pan and Zoom handlers
+            setupPanZoomHandlers();
             
             // Set select tool as default
             setTool('select');
@@ -345,6 +325,7 @@
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     loadImageToCanvas(event.target.result);
+                    logMessage(`Loaded image from file: ${file.name}`);
                 };
                 reader.readAsDataURL(file);
             }
@@ -354,6 +335,7 @@
             const url = document.getElementById('url-image').value;
             if (url) {
                 loadImageToCanvas(url);
+                logMessage(`Loaded image from URL: ${url}`);
             }
         }
 
@@ -458,10 +440,18 @@
             // Add panning event handlers
             setupPanZoomHandlers();
             
+            logMessage(`Tool switched to: ${tool}`);
+            
             // Set canvas behavior based on tool
             if (tool === 'select') {
                 canvas.isDrawingMode = false;
                 canvas.selection = true;
+            } else if (tool === 'dot') {
+                canvas.isDrawingMode = false;
+                canvas.selection = false;
+                
+                // Setup dot placement on click
+                canvas.on('mouse:down', placeDot);
             } else if (tool === 'squiggle') {
                 canvas.isDrawingMode = true;
                 canvas.freeDrawingBrush.width = cursorSize;
@@ -515,6 +505,28 @@
                     canvas.selection = true;
                     canvas.setCursor('default');
                 }
+            });
+            
+            // Zoom with mouse wheel
+            canvas.on('mouse:wheel', function(opt) {
+                const delta = opt.e.deltaY;
+                let zoom = canvas.getZoom();
+                zoom *= 0.999 ** delta;
+                
+                // Limit zoom level
+                if (zoom > 20) zoom = 20;
+                if (zoom < 0.1) zoom = 0.1;
+                
+                zoomLevel = zoom;
+                
+                // Calculate zoom point (mouse position)
+                const point = new fabric.Point(opt.e.offsetX, opt.e.offsetY);
+                
+                // Apply zoom centered on mouse position
+                canvas.zoomToPoint(point, zoom);
+                
+                opt.e.preventDefault();
+                opt.e.stopPropagation();
             });
         }
 
@@ -672,6 +684,8 @@
         }
 
         function updateCoordinates(options) {
+            if (!options || !options.e) return;
+            
             const pointer = canvas.getPointer(options.e);
             const imageCoords = transformCoordinates(pointer);
             document.getElementById('coordinates').textContent = `Mouse: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`;
@@ -682,7 +696,7 @@
             }
             
             // Record mouse data if tracking is active
-            if (isRecording) {
+            if (isRecording && !isPaused) {
                 // We're only adding data 5 times per second, so we don't need to do it on every move
                 // This is handled by the interval in toggleRecording()
             }
@@ -742,6 +756,7 @@
 
         function toggleRecording() {
             const recordBtn = document.getElementById('record-btn');
+            const pauseBtn = document.getElementById('pause-btn');
             const recordingIndicator = document.getElementById('recording-indicator');
             const recordingTimer = document.getElementById('recording-timer');
             const volumeMeter = document.getElementById('volume-meter');
@@ -749,8 +764,10 @@
             if (isRecording) {
                 // Stop recording
                 isRecording = false;
+                isPaused = false;
                 recordBtn.textContent = 'Start Recording';
                 recordBtn.classList.replace('btn-secondary', 'btn-danger');
+                pauseBtn.disabled = true;
                 recordingIndicator.style.display = 'none';
                 recordingTimer.style.display = 'none';
                 volumeMeter.style.display = 'none';
@@ -765,6 +782,7 @@
                 if (recorder) {
                     recorder.stopRecording(function() {
                         audioBlob = recorder.getBlob();
+                        logMessage(`Audio recording completed: ${Math.round(audioBlob.size / 1024)} KB`);
                     });
                 }
                 
@@ -777,12 +795,19 @@
                     audioContext.close();
                     audioContext = null;
                 }
+                
+                logMessage(`Recording stopped. Captured ${mouseData.length} mouse positions.`);
             } else {
                 // Start recording
                 isRecording = true;
+                isPaused = false;
+                pausedTime = 0;
                 recordBtn.textContent = 'Stop Recording';
                 recordBtn.classList.replace('btn-danger', 'btn-secondary');
+                pauseBtn.disabled = false;
+                pauseBtn.textContent = 'Pause Recording';
                 recordingIndicator.style.display = 'inline';
+                recordingIndicator.style.color = 'red';
                 recordingTimer.style.display = 'inline';
                 volumeMeter.style.display = 'block';
                 
@@ -797,7 +822,9 @@
                 
                 // Start mouse tracking (5 times per second)
                 mouseTrackingInterval = setInterval(function() {
-                    const pointer = canvas.getPointer({ e: { clientX: 0, clientY: 0 } });
+                    if (isPaused) return;
+                    
+                    const pointer = canvas.getPointer({ e: canvas.upperCanvasEl });
                     mouseData.push({
                         timestamp: Date.now(),
                         x: pointer.x,
@@ -843,31 +870,43 @@
                         recorder = RecordRTC(stream, {
                             type: 'audio',
                             mimeType: 'audio/webm',
-                            recorderType: RecordRTC.StereoAudioRecorder
+                            recorderType: RecordRTC.StereoAudioRecorder,
+                            disableLogs: true
                         });
                         recorder.startRecording();
+                        
+                        logMessage('Audio recording started');
                     })
                     .catch(function(error) {
                         console.error('Error accessing microphone:', error);
                         alert('Error accessing microphone. Please check your permissions.');
+                        logMessage('Error accessing microphone: ' + error.message);
                         
                         // Stop recording if microphone fails
                         isRecording = false;
                         recordBtn.textContent = 'Start Recording';
                         recordBtn.classList.replace('btn-secondary', 'btn-danger');
+                        pauseBtn.disabled = true;
                         recordingIndicator.style.display = 'none';
                         recordingTimer.style.display = 'none';
                         volumeMeter.style.display = 'none';
                         
                         clearInterval(mouseTrackingInterval);
                     });
+                
+                logMessage('Recording started');
             }
         }
 
         function updateRecordingTimer() {
             if (!isRecording) return;
             
-            const elapsedSeconds = Math.floor((Date.now() - recordingStartTime) / 1000);
+            let elapsedMilliseconds = Date.now() - recordingStartTime - pausedTime;
+            if (isPaused) {
+                elapsedMilliseconds = Date.now() - recordingStartTime - pausedTime;
+            }
+            
+            const elapsedSeconds = Math.floor(elapsedMilliseconds / 1000);
             const minutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, '0');
             const seconds = (elapsedSeconds % 60).toString().padStart(2, '0');
             
@@ -897,6 +936,8 @@
             if (audioBlob) {
                 saveAs(audioBlob, 'annotation_audio.webm');
             }
+            
+            logMessage(`Annotation data saved. Objects: ${canvasData.objects.length}, Mouse positions: ${mouseData.length}, Audio: ${audioBlob ? 'Yes' : 'No'}`);
         }
 
         function loadAnnotationData(e) {
@@ -916,15 +957,18 @@
                             }
                             
                             canvas.renderAll();
+                            logMessage(`Loaded annotation data. Objects: ${canvas.getObjects().length}`);
                         });
                         
                         // Load mouse data
                         mouseData = data.mouseData || [];
+                        logMessage(`Loaded ${mouseData.length} mouse positions from file`);
                         
                         alert('Annotation data loaded successfully.');
                     } catch (error) {
                         console.error('Error loading annotation data:', error);
                         alert('Error loading annotation data. Please check the file format.');
+                        logMessage(`Error loading annotation data: ${error.message}`);
                     }
                 };
                 reader.readAsText(file);
@@ -934,8 +978,11 @@
         function replayRecording() {
             if (mouseData.length === 0) {
                 alert('No recording data available to replay.');
+                logMessage('Replay failed: No mouse data available');
                 return;
             }
+            
+            logMessage(`Replaying recording with ${mouseData.length} frames`);
             
             // Create indicator dot
             const dot = new fabric.Circle({
@@ -971,6 +1018,7 @@
                         canvas.remove(dot);
                         canvas.remove(trail);
                         canvas.renderAll();
+                        logMessage('Replay completed');
                     }, 1000);
                     return;
                 }
@@ -1039,6 +1087,68 @@
             
             // Close modal
             emailModal.hide();
+        }
+
+        function pauseResumeRecording() {
+            if (!isRecording) return;
+            
+            const pauseBtn = document.getElementById('pause-btn');
+            const recordingIndicator = document.getElementById('recording-indicator');
+            
+            if (isPaused) {
+                // Resume recording
+                isPaused = false;
+                pauseBtn.textContent = 'Pause Recording';
+                recordingIndicator.style.color = 'red';
+                
+                // Calculate paused duration
+                pausedTime += Date.now() - pauseStartTime;
+                
+                // Resume audio recording if available
+                if (recorder) {
+                    recorder.resumeRecording();
+                }
+                
+                logMessage('Recording resumed');
+            } else {
+                // Pause recording
+                isPaused = true;
+                pauseBtn.textContent = 'Resume Recording';
+                recordingIndicator.style.color = 'orange';
+                pauseStartTime = Date.now();
+                
+                // Pause audio recording if available
+                if (recorder) {
+                    recorder.pauseRecording();
+                }
+                
+                logMessage('Recording paused');
+            }
+        }
+
+        function placeDot(options) {
+            if (options.e.ctrlKey) return; // Don't place dot if ctrl is pressed (panning)
+            
+            const pointer = canvas.getPointer(options.e);
+            
+            // Create dot
+            const dot = new fabric.Circle({
+                left: pointer.x,
+                top: pointer.y,
+                radius: cursorSize / 2,
+                fill: '#000000',
+                stroke: '#000000',
+                strokeWidth: 1,
+                originX: 'center',
+                originY: 'center',
+                selectable: true
+            });
+            
+            canvas.add(dot);
+            dot.bringToFront();
+            canvas.renderAll();
+            
+            logMessage(`Dot placed at X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`);
         }
     </script>
 </body>
