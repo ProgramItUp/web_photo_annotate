@@ -16,6 +16,26 @@ A standalone web application for annotating images and recording mouse movements
 - Option to email annotation data
 - Replay recorded mouse movements
 
+## Project Structure
+
+The application is organized into multiple files for better maintainability:
+
+```
+/
+├── index.html           # Main HTML structure
+├── css/
+│   └── styles.css       # CSS styles for the application
+├── js/
+│   ├── app.js           # Main application initialization
+│   ├── canvas.js        # Canvas setup and pan/zoom functionality
+│   ├── config.js        # Configuration constants
+│   ├── drawing-tools.js # Drawing tools (box, circle, arrow, etc.)
+│   ├── image-tools.js   # Image loading and filtering
+│   ├── recording.js     # Audio and mouse recording functionality
+│   └── utils.js         # Utility functions and helpers
+└── README.md            # Project documentation
+```
+
 ## Usage
 
 1. Open `index.html` in a web browser that supports HTML5 Canvas and the Web Audio API

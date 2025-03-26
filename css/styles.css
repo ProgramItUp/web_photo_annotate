@@ -1,0 +1,59 @@
+/* Canvas and container styles */
+.canvas-container {
+    position: relative;
+    margin: 20px 0;
+    border: 1px solid #ccc;
+    overflow: hidden;
+}
+
+#image-container {
+    min-height: 400px;
+    background-color: #f8f9fa;
+}
+
+/* Tool selection styles */
+.tool-selected {
+    background-color: #0d6efd !important;
+    color: white !important;
+}
+
+/* Controls panel styles */
+.controls-panel {
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    margin-bottom: 15px;
+}
+
+/* Coordinates display */
+.coordinates-display {
+    font-family: monospace;
+    padding: 8px;
+    background-color: #f1f1f1;
+    border-radius: 4px;
+}
+
+/* Recording indicator styles */
+.recording-indicator {
+    color: red;
+    font-weight: bold;
+    display: none;
+}
+
+/* Audio volume meter */
+.audio-volume-meter {
+    width: 100%;
+    height: 20px;
+    background-color: #f1f1f1;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 10px;
+    display: none;
+}
+
+.volume-level {
+    height: 100%;
+    background-color: #28a745;
+    width: 0%;
+    transition: width 0.1s ease-in-out;
+} 
