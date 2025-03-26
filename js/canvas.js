@@ -197,6 +197,12 @@ window.fabric = fabric;
                 logMessage(`Cursor trail updated: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
             }
             
+            // IMPORTANT: Directly send this data to the recording system
+            // This ensures mouse data is captured even if event listeners aren't being triggered
+            if (typeof window.updateCursorTrailPosition === 'function' && window.isRecording && window.isRecording()) {
+                window.updateCursorTrailPosition(pointer.x, pointer.y);
+            }
+            
             // Render the updated trail
             renderCursorTrail();
             
@@ -411,6 +417,11 @@ function setupCursorTrailTracking(canvas) {
                 const pointer = canvas.getPointer(options.e);
                 updateCursorTrail(pointer);
                 
+                // IMPORTANT: Directly send mouse down event to recording system
+                if (typeof window.captureMouseDownDirect === 'function' && window.isRecording && window.isRecording()) {
+                    window.captureMouseDownDirect(pointer.x, pointer.y, options.e.button);
+                }
+                
                 logMessage('Mouse down - cursor trail activated', 'DEBUG');
             } else {
                 logMessage('Mouse down - cursor trail disabled by user preference', 'DEBUG');
@@ -426,6 +437,12 @@ function setupCursorTrailTracking(canvas) {
             showCursorTail = false;
             window.showCursorTail = false;
             updateCursorTrailStatus(false, true); // Pass true to indicate it's ready state
+            
+            // IMPORTANT: Directly send mouse up event to recording system
+            if (typeof window.captureMouseUpDirect === 'function' && window.isRecording && window.isRecording()) {
+                const pointer = canvas.getPointer(options.e);
+                window.captureMouseUpDirect(pointer.x, pointer.y, options.e.button);
+            }
             
             // Clear the trail when mouse button released
             clearCursorTrail();
@@ -631,6 +648,12 @@ function updateCursorTrail(pointer) {
         // Log the position
         if (typeof logMessage === 'function') {
             logMessage(`Cursor trail updated: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+        }
+        
+        // IMPORTANT: Directly send this data to the recording system
+        // This ensures mouse data is captured even if event listeners aren't being triggered
+        if (typeof window.updateCursorTrailPosition === 'function' && window.isRecording && window.isRecording()) {
+            window.updateCursorTrailPosition(pointer.x, pointer.y);
         }
         
         // Render the updated trail
