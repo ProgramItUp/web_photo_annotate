@@ -159,6 +159,25 @@
     cursor: none;
 }
 
+/* Hide specific drawing tools but keep them in the DOM */
+#tool-dot, #tool-box, #tool-circle, #tool-squiggle, 
+#tool-arrow, #tool-select, #delete-selected {
+    display: none;
+}
+
+/* Hide the entire div containing the cursor trail toggle */
+.mb-2:has(#cursor-tail-toggle),
+.mb-2 label.form-check-label.small,
+#cursor-tail-toggle,
+#cursor-trail-status {
+    display: none !important;
+}
+
+/* Hide the informational text about cursor trail */
+.alert.alert-info.p-1.m-0.small {
+    display: none !important;
+}
+
 /* Add styles for button processing state */
 .btn-processing {
     background-color: #6c757d !important; 

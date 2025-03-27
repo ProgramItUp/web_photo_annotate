@@ -32,6 +32,18 @@ document.addEventListener('DOMContentLoaded', function() {
         logMessage('Could not find URL load button', 'ERROR');
     }
     
+    // Add event listener for local image input
+    const localImageInput = document.getElementById('local-image');
+    if (localImageInput) {
+        localImageInput.addEventListener('change', function(event) {
+            logMessage('Local image file selected');
+            loadLocalImage(event);
+        });
+        logMessage('Local image input enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find local image input', 'ERROR');
+    }
+    
     // Enable image adjustment tools
     const brightnessSlider = document.getElementById('brightness');
     const contrastSlider = document.getElementById('contrast');
@@ -137,6 +149,40 @@ function loadLocalImage() {
 }
 
 /**
+ * Load image from local file input
+ * @param {Event} event - The file input change event
+ */
+function loadLocalImage(event) {
+    if (!event || !event.target || !event.target.files || !event.target.files[0]) {
+        logMessage('No file selected', 'WARN');
+        return;
+    }
+    
+    const file = event.target.files[0];
+    logMessage(`Loading local image: ${file.name} (${Math.round(file.size/1024)} KB)`, 'INFO');
+    
+    // Create a FileReader to read the image file
+    const reader = new FileReader();
+    
+    // Set up the onload handler
+    reader.onload = function(e) {
+        const dataUrl = e.target.result;
+        logMessage('File loaded, processing image...', 'INFO');
+        
+        // Use the same function that handles URL images
+        loadImageFromUrl(dataUrl);
+    };
+    
+    // Set up error handler
+    reader.onerror = function() {
+        logMessage('Error reading local file', 'ERROR');
+    };
+    
+    // Read the file as a data URL
+    reader.readAsDataURL(file);
+}
+
+/**
  * Load an image from the URL input
  * Implemented to enable URL loading functionality
  */
@@ -212,7 +258,7 @@ function loadImageFromUrl(url) {
             // Resize the canvas to match the image aspect ratio
             if (typeof window.resizeCanvas === 'function') {
                 window.resizeCanvas();
-            } else {
+    } else {
                 logMessage('resizeCanvas function not available', 'ERROR');
             }
             
@@ -221,7 +267,7 @@ function loadImageFromUrl(url) {
             document.getElementById('contrast').value = 0;
             
             logMessage(`Image loaded successfully: ${img.width}x${img.height} pixels`, 'INFO');
-        } catch (error) {
+            } catch (error) {
             console.error('Error loading image:', error);
             logMessage('Error loading image: ' + error.message, 'ERROR');
         }
@@ -332,7 +378,7 @@ function updateImageFilters() {
         window.canvas.renderAll();
         
         logMessage('Image filters updated');
-    } catch (error) {
+                } catch (error) {
         console.error('Error applying image filters:', error);
         logMessage('Error applying image filters: ' + error.message, 'ERROR');
     }
@@ -388,6 +434,6 @@ function toggleCursorTrail(enable) {
     } else {
         logMessage('setCursorTrailEnabled function not available', 'ERROR');
     }
-}
-
+    }
+    
 console.log('=== app.js: LOADING COMPLETED ==='); 

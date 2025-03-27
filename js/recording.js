@@ -329,15 +329,15 @@ function startAudioRecording() {
             };
             
             // Clear existing data
-            audioChunks = [];
-            mouseData = [];
-            
+        audioChunks = [];
+        mouseData = [];
+        
             // Start capturing mouse data
             startCaptureMouseData();
             
             // Start recording
             mediaRecorder.start();
-            isRecording = true;
+        isRecording = true;
         isPaused = false;
             
             // Record the start time and reset paused time
@@ -353,8 +353,8 @@ function startAudioRecording() {
             // Start updating volume meter
             startVolumeMeter(stream);
             
-            // Show laser pointer notification
-            showLaserPointerNotification();
+            // Remove laser pointer notification call
+            // showLaserPointerNotification();
             
             logMessage('Recording started', 'INFO');
     })
@@ -674,9 +674,9 @@ function stopCaptureMouseData() {
             logMessage('2. Is the cursor trail enabled? (checkbox should be checked)', 'INFO');
             logMessage('3. Did you press the left mouse button to activate the laser pointer?', 'INFO');
             logMessage('4. Check browser console for errors in event handling', 'INFO');
-            return;
-        }
-        
+        return;
+    }
+    
         // Count different types of mouse events
         const moveCount = mouseData.filter(d => d.type === 'move').length;
         const downCount = mouseData.filter(d => d.type === 'down').length;
@@ -1461,8 +1461,8 @@ function replayAnnotation() {
         // Function to pause the replay
         window.pauseReplay = function() {
             if (!isPaused && isReplaying) {
-                isPaused = true;
-                pauseStartTime = Date.now();
+        isPaused = true;
+        pauseStartTime = Date.now();
                 
                 // Pause audio if it exists
                 if (audioElement) {
@@ -1489,7 +1489,7 @@ function replayAnnotation() {
         window.resumeReplay = function() {
             if (isPaused && isReplaying) {
                 // Calculate how long we were paused
-                const pauseDuration = Date.now() - pauseStartTime;
+        const pauseDuration = Date.now() - pauseStartTime;
                 totalPausedTime += pauseDuration;
                 
                 // Adjust start time to account for pause duration
@@ -1506,8 +1506,8 @@ function replayAnnotation() {
                 if (!animationFrameId && currentDataIndex < sortedMouseData.length) {
                     animationFrameId = requestAnimationFrame(updateCursorPosition);
                 }
-                
-                isPaused = false;
+        
+        isPaused = false;
                 pauseStartTime = 0;
                 
                 logMessage('Replay resumed', 'INFO');
@@ -1628,7 +1628,7 @@ function replayAnnotation() {
             replayBtn.textContent = 'Replaying...';
             replayBtn.disabled = true;
         }
-    } catch (error) {
+            } catch (error) {
         console.error('Error replaying annotation:', error);
         logMessage('Error replaying: ' + error.message, 'ERROR');
     }
@@ -2423,7 +2423,7 @@ function saveMouseDataForDebug() {
         logMessage('Error saving debug data: ' + error.message, 'ERROR');
         return false;
     }
-}
+} 
 
 // Export functions for use in other modules
 window.startCaptureMouseData = startCaptureMouseData;
