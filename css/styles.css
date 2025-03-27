@@ -120,7 +120,68 @@
     justify-content: space-between;
 }
 
+/* Replay cursor styles */
+.replay-cursor {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: rgba(255, 0, 0, 0.5);
+    border: 2px solid red;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    transition: width 0.1s ease-out, height 0.1s ease-out, background-color 0.1s ease-out;
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
+}
+
+/* Laser pointer trail styles */
+#laser-trail-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 999;
+}
+
+.laser-trail-point {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(255, 0, 0, 0.5);
+}
+
 /* Laser pointer effect styling */
 .laser-active {
     cursor: none;
+}
+
+/* Add styles for button processing state */
+.btn-processing {
+    background-color: #6c757d !important; 
+    color: white !important;
+    cursor: wait !important;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.btn-processing:after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.2);
+    animation: pulse 1.5s infinite;
+    border-radius: 0.25rem;
+}
+
+@keyframes pulse {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
 } 

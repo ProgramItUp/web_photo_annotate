@@ -99,20 +99,11 @@ function initializeApp() {
             throw canvasError; // Re-throw to stop initialization
         }
         
-        // Initialize the email modal - make this optional
-        try {
-            logMessage('Initializing email modal...', 'DEBUG');
-            if (typeof window.initializeEmailModal === 'function') {
-                window.initializeEmailModal();
-                logMessage('Email modal initialized', 'DEBUG');
-            } else {
-                logMessage('Email modal function not found, skipping', 'WARN');
-            }
-        } catch (modalError) {
-            console.error('Error initializing email modal:', modalError);
-            logMessage('Error initializing email modal: ' + modalError.message, 'WARN');
-            // Non-critical error, continue with application
-        }
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Email handling is now done programmatically without a modal
+        logMessage('Email handling now uses copy/download approach instead of modal', 'DEBUG');
         
         // Event listeners removed as requested
         logMessage('Event handling code removed as requested', 'DEBUG');
@@ -135,14 +126,6 @@ function initializeApp() {
  */
 function setupEventListeners() {
     logMessage('Event handling code removed as requested', 'DEBUG');
-}
-
-/**
- * Initialize the email sending functionality modal
- */
-function initializeEmailModal() {
-    // Email functionality initialization without event handling
-    logMessage('Email modal initialized without event handlers', 'DEBUG');
 }
 
 /**
@@ -229,7 +212,7 @@ function loadImageFromUrl(url) {
             // Resize the canvas to match the image aspect ratio
             if (typeof window.resizeCanvas === 'function') {
                 window.resizeCanvas();
-    } else {
+            } else {
                 logMessage('resizeCanvas function not available', 'ERROR');
             }
             
@@ -238,7 +221,7 @@ function loadImageFromUrl(url) {
             document.getElementById('contrast').value = 0;
             
             logMessage(`Image loaded successfully: ${img.width}x${img.height} pixels`, 'INFO');
-            } catch (error) {
+        } catch (error) {
             console.error('Error loading image:', error);
             logMessage('Error loading image: ' + error.message, 'ERROR');
         }
@@ -349,7 +332,7 @@ function updateImageFilters() {
         window.canvas.renderAll();
         
         logMessage('Image filters updated');
-                } catch (error) {
+    } catch (error) {
         console.error('Error applying image filters:', error);
         logMessage('Error applying image filters: ' + error.message, 'ERROR');
     }
@@ -405,6 +388,6 @@ function toggleCursorTrail(enable) {
     } else {
         logMessage('setCursorTrailEnabled function not available', 'ERROR');
     }
-    }
-    
+}
+
 console.log('=== app.js: LOADING COMPLETED ==='); 

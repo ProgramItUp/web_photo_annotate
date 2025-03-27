@@ -162,13 +162,23 @@ function initializeRecordingButtons() {
     const emailBtn = document.getElementById('email-btn');
     if (emailBtn) {
         emailBtn.addEventListener('click', function() {
-            // Show the email modal
-            const emailModal = new bootstrap.Modal(document.getElementById('emailModal'));
-            emailModal.show();
+            // Show notification that email generation is in progress
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-info position-fixed top-50 start-50 translate-middle';
+            notification.style.zIndex = '9999';
+            notification.style.maxWidth = '350px';
+            notification.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+                    <div>Preparing email data...</div>
+                    <div class="small text-muted">This may take a few seconds</div>
+                </div>
+            `;
+            document.body.appendChild(notification);
+            
+            // Execute the prepareEmailData function directly (renamed from sendEmail)
+            prepareEmailData('user@example.com', 'User', notification);
         });
-        
-        // Initialize the email modal
-        initializeEmailModal();
         
         logMessage('Email button enabled', 'DEBUG');
     }
@@ -257,7 +267,7 @@ function startAudioRecording() {
             // Start recording
             mediaRecorder.start();
             isRecording = true;
-            isPaused = false;
+        isPaused = false;
             
             // Record the start time and reset paused time
             recordingStartTime = Date.now();
@@ -290,8 +300,8 @@ function stopAudioRecording() {
     mediaRecorder.stop();
     
     // Stop all tracks in the stream to release the microphone
-    if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
+        if (audioStream) {
+            audioStream.getTracks().forEach(track => track.stop());
     }
     
     // Clear the timer interval
@@ -308,7 +318,7 @@ function stopAudioRecording() {
     
     // Reset state
     isRecording = false;
-    isPaused = false;
+        isPaused = false;
     
     logMessage('Recording ended', 'INFO');
 }
@@ -365,8 +375,8 @@ function updateRecordingUI(isRecording) {
         pauseBtn.disabled = !isRecording;
         pauseBtn.textContent = 'Pause Recording';
     }
-    
-    if (recordingIndicator) {
+        
+        if (recordingIndicator) {
         recordingIndicator.style.display = isRecording ? 'inline' : 'none';
     }
     
@@ -605,23 +615,23 @@ function getCurrentRecordingTime() {
 function startVolumeMeter(stream) {
     try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
+            const source = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
-        source.connect(analyser);
-        
+            source.connect(analyser);
+            
         // Store reference to audio context for later cleanup
         window.currentAudioContext = audioContext;
         
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
-        
-        function updateVolumeMeter() {
-            if (!isRecording) return;
             
+            function updateVolumeMeter() {
+                if (!isRecording) return;
+                
             // Get volume data
-            analyser.getByteFrequencyData(dataArray);
-            
+                    analyser.getByteFrequencyData(dataArray);
+                    
             // Calculate average volume level (0-100%)
             let sum = 0;
             for (let i = 0; i < bufferLength; i++) {
@@ -953,7 +963,7 @@ function getAnnotationsFromCanvas() {
                         currentSession.push(point);
                         sessions.push(currentSession);
                         currentSession = [];
-                    } else {
+                } else {
                         // Add to current session
                         currentSession.push(point);
                     }
@@ -1058,7 +1068,7 @@ function loadAnnotationData(event) {
         };
         
         reader.readAsText(file);
-    } catch (error) {
+            } catch (error) {
         console.error('Error loading annotation data:', error);
         logMessage('Error loading annotation data: ' + error.message, 'ERROR');
     }
@@ -1198,7 +1208,7 @@ function createReplayCursor() {
         if (canvasContainer) {
             canvasContainer.style.position = 'relative'; // Ensure container is positioned
             canvasContainer.appendChild(cursor);
-        } else {
+    } else {
             document.body.appendChild(cursor);
         }
     }
@@ -1293,44 +1303,302 @@ function updateCoordinatesDisplay(x, y) {
 }
 
 /**
- * Handle email sending
+ * Prepare email data for sharing
+ * @param {string} emailAddress - Recipient email address
+ * @param {string} senderName - Sender name
+ * @param {HTMLElement} notification - Notification element to remove when done
  */
-function sendEmail() {
-    const emailAddress = document.getElementById('email-address').value;
+function prepareEmailData(emailAddress, senderName, notification) {
+    // Add visual feedback to the email button
+    const emailBtn = document.getElementById('email-btn');
+    if (emailBtn) {
+        emailBtn.classList.add('btn-processing');
+        emailBtn.disabled = true;
+    }
+    
+    logMessage('Email button clicked - preparing email data...', 'INFO');
+    
     if (!emailAddress) {
-        logMessage('Email address is required', 'WARN');
-        return;
+        // Use a default fallback address
+        emailAddress = 'user@example.com';
+        logMessage('Using default email address', 'WARN');
     }
     
-    if (!audioBlob) {
-        logMessage('No recording to send', 'WARN');
-        return;
-    }
+    // Default sender name if not provided
+    senderName = senderName || 'Me';
+    const senderEmail = 'me@me.com'; // Placeholder email
     
-    logMessage(`Sending email to ${emailAddress}...`, 'INFO');
+    logMessage(`Preparing email data for ${emailAddress} from ${senderName}...`, 'INFO');
     
-    // Here would be the code to send the email with the recording
-    // This is a placeholder since actual email sending requires server-side code
+    // Create annotation data object similar to when saving
+    const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 16);
+    const annotationData = {
+        timestamp: timestamp,
+        image: {
+            dataUrl: null,
+            width: 0,
+            height: 0
+        },
+        audio: {
+            dataUrl: null,
+            duration: 0
+        },
+        mouseData: mouseData || [],
+        annotations: []
+    };
     
-    // Close the modal after "sending"
-    const emailModal = bootstrap.Modal.getInstance(document.getElementById('emailModal'));
-    if (emailModal) {
-        emailModal.hide();
-    }
-    
-    logMessage(`Email would be sent to ${emailAddress} (simulation)`, 'INFO');
+    // Get image data, audio data, and annotations
+    getImageDataFromCanvas()
+        .then(imageData => {
+            annotationData.image = imageData;
+            logMessage('Image data captured for email', 'DEBUG');
+            return getAudioData();
+        })
+        .then(audioData => {
+            annotationData.audio = audioData;
+            logMessage('Audio data captured for email', 'DEBUG');
+            return getAnnotationsFromCanvas();
+        })
+        .then(annotations => {
+            annotationData.annotations = annotations;
+            logMessage('Annotation data captured for email', 'DEBUG');
+            
+            try {
+                // Convert the JSON to base64 using our utility function
+                const base64Data = window.encodeAnnotationData(annotationData);
+                
+                // Format the email body according to the specification
+                const emailBody = `
+To: ${emailAddress}
+From: ${senderName} <${senderEmail}>
+Subject: Annotations from ${timestamp}
+
+This annotation was created on ${new Date().toLocaleString()} by ${senderName}
+Annotations start here --->
+${base64Data}
+<--- Annotations end here
+`;
+                
+                // Log a shortened version of what we're sending
+                const previewLength = 50;
+                const base64Preview = base64Data.length > previewLength ? 
+                    base64Data.substring(0, previewLength) + '...' : 
+                    base64Data;
+                
+                logMessage(`Email content prepared with ${base64Data.length} characters of base64 data`, 'INFO');
+                logMessage(`Base64 data preview: ${base64Preview}`, 'DEBUG');
+                
+                // Remove the notification
+                if (notification && notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+                
+                // Show a dialog with copy options instead of trying to open an email client
+                showEmailDataDialog(emailBody, emailAddress, base64Data);
+                
+                // Reset UI elements
+                resetEmailButton();
+                
+            } catch (error) {
+                console.error('Error encoding data for email:', error);
+                logMessage('Error encoding data for email: ' + error.message, 'ERROR');
+                resetEmailButton();
+                if (notification && notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error preparing email data:', error);
+            logMessage('Error preparing email data: ' + error.message, 'ERROR');
+            resetEmailButton();
+            if (notification && notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        });
 }
 
 /**
- * Initialize email modal functionality
+ * Display a dialog with email data and copy options
+ * @param {string} emailBody - The full email content
+ * @param {string} emailAddress - The target email address
+ * @param {string} base64Data - Just the base64 encoded data
  */
-function initializeEmailModal() {
-    const sendEmailBtn = document.getElementById('send-email-btn');
-    if (sendEmailBtn) {
-        sendEmailBtn.addEventListener('click', sendEmail);
-    }
+function showEmailDataDialog(emailBody, emailAddress, base64Data) {
+    // Create modal container
+    const modalContainer = document.createElement('div');
+    modalContainer.className = 'modal fade';
+    modalContainer.id = 'emailDataModal';
+    modalContainer.tabIndex = -1;
+    modalContainer.setAttribute('role', 'dialog');
+    modalContainer.setAttribute('aria-labelledby', 'emailDataModalLabel');
+    modalContainer.setAttribute('aria-hidden', 'true');
     
-    logMessage('Email modal initialized', 'DEBUG');
+    // Create modal structure
+    modalContainer.innerHTML = `
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="emailDataModalLabel">Email Data Ready</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <h6>Your annotation data is ready!</h6>
+                    <p>Choose one of the options below to share your data:</p>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">Option 1: Save as File</h6>
+                            </div>
+                            <div class="card-body">
+                                <p>Save the annotation data as a file to attach to an email later.</p>
+                                <button id="saveEmailDataBtn" class="btn btn-primary">Save Data File</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0">Option 2: Copy to Clipboard</h6>
+                            </div>
+                            <div class="card-body">
+                                <p>Copy the complete email text to paste into your email client.</p>
+                                <button id="copyEmailBtn" class="btn btn-success">Copy Email Text</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="emailPreview" class="form-label">Email Preview (first 200 characters):</label>
+                    <textarea id="emailPreview" class="form-control font-monospace" rows="5" readonly></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+    `;
+    
+    // Add modal to document
+    document.body.appendChild(modalContainer);
+    
+    // Set the preview text
+    const previewLength = 200;
+    const emailPreview = emailBody.length > previewLength ? 
+        emailBody.substring(0, previewLength) + '...' : emailBody;
+    
+    // Wait for the modal to be fully added to DOM
+    setTimeout(() => {
+        // Get references to elements
+        const previewTextarea = document.getElementById('emailPreview');
+        const saveButton = document.getElementById('saveEmailDataBtn');
+        const copyButton = document.getElementById('copyEmailBtn');
+        
+        // Set preview text
+        if (previewTextarea) {
+            previewTextarea.value = emailPreview;
+        }
+        
+        // Add save button handler
+        if (saveButton) {
+            saveButton.addEventListener('click', () => {
+                const blob = new Blob([emailBody], { type: 'text/plain' });
+                const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 16);
+                const filename = `annotation-email-${timestamp}.txt`;
+                downloadFile(blob, filename);
+                logMessage(`Email content saved as ${filename}`, 'INFO');
+            });
+        }
+        
+        // Add copy button handler
+        if (copyButton) {
+            copyButton.addEventListener('click', () => {
+                copyToClipboard(emailBody);
+            });
+        }
+        
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('emailDataModal'));
+        modal.show();
+        
+        // Log success
+        logMessage('Email data ready - showing options dialog', 'INFO');
+    }, 100);
+}
+
+/**
+ * Copy text to clipboard with fallbacks for older browsers
+ * @param {string} text - Text to copy
+ */
+function copyToClipboard(text) {
+    // Modern approach
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text)
+            .then(() => {
+                logMessage('Email content copied to clipboard successfully', 'INFO');
+                alert('Email content copied to clipboard!');
+            })
+            .catch(err => {
+                logMessage(`Error copying to clipboard: ${err.message}`, 'ERROR');
+                fallbackCopyToClipboard(text);
+            });
+    } else {
+        // Fallback for older browsers
+        fallbackCopyToClipboard(text);
+    }
+}
+
+/**
+ * Fallback method to copy text to clipboard
+ * @param {string} text - Text to copy
+ */
+function fallbackCopyToClipboard(text) {
+    try {
+        // Create textarea element
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        
+        // Make the textarea out of viewport
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        
+        // Select and copy
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+            logMessage('Email content copied to clipboard using fallback method', 'INFO');
+            alert('Email content copied to clipboard!');
+        } else {
+            logMessage('Unable to copy to clipboard using fallback method', 'WARN');
+            alert('Could not copy to clipboard. Please select the text manually and copy it.');
+        }
+    } catch (err) {
+        logMessage(`Error in fallback copy: ${err.message}`, 'ERROR');
+        alert('Could not copy to clipboard. Please select the text manually and copy it.');
+    }
+}
+
+/**
+ * Reset the email button to its original state
+ */
+function resetEmailButton() {
+    const emailBtn = document.getElementById('email-btn');
+    if (emailBtn) {
+        emailBtn.classList.remove('btn-processing');
+        emailBtn.disabled = false;
+    }
 }
 
 /**
