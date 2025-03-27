@@ -199,8 +199,9 @@ window.fabric = fabric;
             
             // IMPORTANT: Directly send this data to the recording system
             // This ensures mouse data is captured even if event listeners aren't being triggered
-            if (typeof window.updateCursorTrailPosition === 'function' && window.isRecording && window.isRecording()) {
+            if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
                 window.updateCursorTrailPosition(pointer.x, pointer.y);
+                logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
             }
             
             // Render the updated trail
@@ -247,6 +248,19 @@ let lastTrailCleanup = 0; // Time of last trail cleanup
  * Called automatically when document is ready
  */
 function initCursorTrail() {
+    // Get cursor size from slider or use default
+    const cursorSizeSlider = document.getElementById('cursor-size');
+    if (cursorSizeSlider) {
+        const sliderValue = parseInt(cursorSizeSlider.value);
+        cursorSize = isNaN(sliderValue) ? DEFAULT_CURSOR_SIZE : sliderValue;
+        window.cursorSize = cursorSize;
+        logMessage(`Cursor size initialized to ${cursorSize}px from slider`, 'DEBUG');
+    } else {
+        cursorSize = DEFAULT_CURSOR_SIZE;
+        window.cursorSize = cursorSize;
+        logMessage(`Cursor size initialized to default ${cursorSize}px`, 'DEBUG');
+    }
+    
     // Set default state based on checkbox
     const cursorTrailToggle = document.getElementById('cursor-tail-toggle');
     if (cursorTrailToggle) {
@@ -392,8 +406,16 @@ function setupCursorTrailTracking(canvas) {
         // Always track position for coordinates
         checkAndLogMouseMovement(pointer);
         
+        // Check if left button is pressed using options.e.buttons
+        const leftButtonPressed = options.e.buttons === 1;
+        
+        // Log occasionally to avoid spamming
+        if (Math.random() < 0.01) {
+            logMessage(`Mouse move event: buttons=${options.e.buttons}, isMouseDown=${isMouseDown}, cursorTrailEnabled=${window.cursorTrailEnabled}`, 'DEBUG');
+        }
+        
         // Only update cursor trail if mouse button is down and trail is enabled
-        if (isMouseDown && window.cursorTrailEnabled) {
+        if ((isMouseDown || leftButtonPressed) && window.cursorTrailEnabled) {
             updateCursorTrail(pointer);
         }
     });
@@ -415,11 +437,18 @@ function setupCursorTrailTracking(canvas) {
                 
                 // Initial point at mouse down position
                 const pointer = canvas.getPointer(options.e);
+                
+                // Log detailed info about the mouse down event
+                logMessage(`Mouse down detected - x:${Math.round(pointer.x)}, y:${Math.round(pointer.y)}, button:${options.e.button}`, 'INFO');
+                
                 updateCursorTrail(pointer);
                 
                 // IMPORTANT: Directly send mouse down event to recording system
-                if (typeof window.captureMouseDownDirect === 'function' && window.isRecording && window.isRecording()) {
+                if (typeof window.captureMouseDownDirect === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
                     window.captureMouseDownDirect(pointer.x, pointer.y, options.e.button);
+                    logMessage(`Sent mouse down to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                } else {
+                    logMessage('NOT sending mouse down to recording system - recording inactive or function unavailable', 'DEBUG');
                 }
                 
                 logMessage('Mouse down - cursor trail activated', 'DEBUG');
@@ -439,9 +468,10 @@ function setupCursorTrailTracking(canvas) {
             updateCursorTrailStatus(false, true); // Pass true to indicate it's ready state
             
             // IMPORTANT: Directly send mouse up event to recording system
-            if (typeof window.captureMouseUpDirect === 'function' && window.isRecording && window.isRecording()) {
+            if (typeof window.captureMouseUpDirect === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
                 const pointer = canvas.getPointer(options.e);
                 window.captureMouseUpDirect(pointer.x, pointer.y, options.e.button);
+                logMessage(`Sent mouse up to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
             }
             
             // Clear the trail when mouse button released
@@ -572,12 +602,15 @@ function renderCursorTrail() {
     // Only render if we have points
     if (cursorTrailPoints.length === 0) return;
     
+    // Get the current cursor size from either window or local variable
+    const currentCursorSize = window.cursorSize || cursorSize;
+    
     // Draw dots with decreasing saliency for each point
     cursorTrailPoints.forEach((point, index) => {
         if (point.opacity <= 0.05) return; // Skip nearly invisible points
         
         // Calculate size based on opacity (decreasing size as the point ages)
-        const dotSize = cursorSize * point.opacity;
+        const dotSize = currentCursorSize * point.opacity;
         
         // Create dot for trail point with decreasing saliency
         const circle = new fabric.Circle({
@@ -599,9 +632,9 @@ function renderCursorTrail() {
     if (cursorTrailPoints.length > 0) {
         const lastPoint = cursorTrailPoints[cursorTrailPoints.length - 1];
         const currentCursor = new fabric.Circle({
-            left: lastPoint.x - cursorSize/2,
-            top: lastPoint.y - cursorSize/2,
-            radius: cursorSize/2,
+            left: lastPoint.x - currentCursorSize/2,
+            top: lastPoint.y - currentCursorSize/2,
+            radius: currentCursorSize/2,
             fill: 'rgba(255, 0, 0, 0.6)',
             stroke: 'rgba(255, 0, 0, 1)',
             strokeWidth: 2,
@@ -652,8 +685,9 @@ function updateCursorTrail(pointer) {
         
         // IMPORTANT: Directly send this data to the recording system
         // This ensures mouse data is captured even if event listeners aren't being triggered
-        if (typeof window.updateCursorTrailPosition === 'function' && window.isRecording && window.isRecording()) {
+        if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
             window.updateCursorTrailPosition(pointer.x, pointer.y);
+            logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
         }
         
         // Render the updated trail

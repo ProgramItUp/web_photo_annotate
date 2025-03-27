@@ -35,6 +35,12 @@ window.updateCursorTrailPosition = function(x, y) {
         // Get elapsed recording time
         const elapsedTimeMs = getCurrentRecordingTime();
         
+        // Ensure x and y are valid numbers
+        if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
+            console.error(`Invalid cursor position: x=${x}, y=${y}`);
+            return;
+        }
+        
         // Store mouse data with timestamp
         mouseData.push({
             type: 'move',
@@ -49,6 +55,7 @@ window.updateCursorTrailPosition = function(x, y) {
         // Log occasionally to prevent log spam
         if (now % 1000 < 20) {
             logMessage(`Captured cursor trail position: X: ${Math.round(x)}, Y: ${Math.round(y)}`, 'DEBUG');
+            logMessage(`Total mouse data points: ${mouseData.length}`, 'DEBUG');
         }
     }
 };
@@ -56,6 +63,12 @@ window.updateCursorTrailPosition = function(x, y) {
 // Add direct mouse event capture functions
 window.captureMouseDownDirect = function(x, y, button) {
     if (!isRecording || isPaused) return;
+    
+    // Ensure coordinates are valid
+    if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
+        console.error(`Invalid mouse down position: x=${x}, y=${y}`);
+        return;
+    }
     
     const now = Date.now();
     const elapsedTimeMs = getCurrentRecordingTime();
@@ -74,10 +87,18 @@ window.captureMouseDownDirect = function(x, y, button) {
         isLaserPointer: true, // Since this comes from cursor trail system
         source: 'direct' // Mark the source
     });
+    
+    logMessage(`Mouse DOWN event recorded at ${elapsedTimeMs}ms (data point #${mouseData.length})`, 'DEBUG');
 };
 
 window.captureMouseUpDirect = function(x, y, button) {
     if (!isRecording || isPaused) return;
+    
+    // Ensure coordinates are valid
+    if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
+        console.error(`Invalid mouse up position: x=${x}, y=${y}`);
+        return;
+    }
     
     const now = Date.now();
     const elapsedTimeMs = getCurrentRecordingTime();
@@ -96,6 +117,8 @@ window.captureMouseUpDirect = function(x, y, button) {
         isLaserPointer: true, // Since this comes from cursor trail system
         source: 'direct' // Mark the source
     });
+    
+    logMessage(`Mouse UP event recorded at ${elapsedTimeMs}ms (data point #${mouseData.length})`, 'DEBUG');
 };
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -132,6 +155,16 @@ function initializeRecordingButtons() {
     if (saveBtn) {
         saveBtn.addEventListener('click', saveAnnotationData);
         logMessage('Save button enabled', 'DEBUG');
+    }
+    
+    // Debug button
+    const debugBtn = document.getElementById('debug-btn');
+    if (debugBtn) {
+        debugBtn.addEventListener('click', function() {
+            logMessage('Debug button clicked - saving mouse data for diagnostics', 'INFO');
+            saveMouseDataForDebug();
+        });
+        logMessage('Debug button enabled', 'DEBUG');
     }
     
     // Load button
@@ -224,6 +257,44 @@ function updateRecordingTimer() {
 }
 
 /**
+ * Show laser pointer usage notification
+ */
+function showLaserPointerNotification() {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-warning position-fixed top-50 start-50 translate-middle';
+    notification.style.zIndex = '9999';
+    notification.style.maxWidth = '400px';
+    notification.innerHTML = `
+        <div class="text-center">
+            <h5>Laser Pointer Mode Active</h5>
+            <p>Click and drag on the image to use the laser pointer.</p>
+            <p>The laser pointer is automatically activated when you press the left mouse button.</p>
+            <button class="btn btn-sm btn-primary" id="close-laser-notification">Got it!</button>
+        </div>
+    `;
+    
+    // Add to document
+    document.body.appendChild(notification);
+    
+    // Add event listener to close button
+    document.getElementById('close-laser-notification').addEventListener('click', function() {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    });
+    
+    // Auto-remove after 5 seconds
+    setTimeout(function() {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 5000);
+    
+    logMessage('Laser pointer notification shown', 'DEBUG');
+}
+
+/**
  * Start audio recording
  */
 function startAudioRecording() {
@@ -281,6 +352,9 @@ function startAudioRecording() {
             
             // Start updating volume meter
             startVolumeMeter(stream);
+            
+            // Show laser pointer notification
+            showLaserPointerNotification();
             
             logMessage('Recording started', 'INFO');
     })
@@ -416,6 +490,10 @@ function startCaptureMouseData() {
         // Get canvas element
         const canvasEl = window.canvas.getElement();
         
+        logMessage('Starting mouse data capture...', 'INFO');
+        logMessage(`Canvas element found: ${canvasEl ? 'YES' : 'NO'}`, 'DEBUG');
+        logMessage(`Recording state: isRecording=${isRecording}, isPaused=${isPaused}`, 'DEBUG');
+        
         // Add mouse move listener
         canvasEl.addEventListener('mousemove', captureMouseMove);
         
@@ -423,8 +501,150 @@ function startCaptureMouseData() {
         canvasEl.addEventListener('mousedown', captureMouseDown);
         canvasEl.addEventListener('mouseup', captureMouseUp);
         
-        logMessage('Mouse data capture started', 'DEBUG');
+        // Add direct event listeners to fabric.js canvas for redundancy
+        if (window.canvas.on) {
+            window.canvas.on('mouse:down', function(options) {
+                logMessage(`Fabric mouse:down event captured at (${Math.round(options.pointer.x)}, ${Math.round(options.pointer.y)})`, 'DEBUG');
+                // We don't need to do anything here - just confirming events are firing
+            });
+            
+            window.canvas.on('mouse:move', function(options) {
+                // Log occasionally to avoid spam
+                if (Math.random() < 0.001) {
+                    logMessage(`Fabric mouse:move event captured at (${Math.round(options.pointer.x)}, ${Math.round(options.pointer.y)})`, 'DEBUG');
+                }
+            });
+            
+            logMessage('Added redundant fabric.js event listeners', 'DEBUG');
+        }
+        
+        // Add global document-level event listener as backup
+        document.addEventListener('mousemove', function(e) {
+            if (!isRecording || isPaused) return;
+            
+            // Only process events over the canvas area
+            const rect = canvasEl.getBoundingClientRect();
+            if (e.clientX >= rect.left && e.clientX <= rect.right && 
+                e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                
+                // Only log occasionally to avoid spam
+                if (Math.random() < 0.001) {
+                    logMessage(`Document mousemove detected over canvas at (${e.clientX-rect.left}, ${e.clientY-rect.top})`, 'DEBUG');
+                }
+                
+                // Check if this is with button pressed
+                if (e.buttons === 1) {
+                    // Get elapsed recording time
+                    const elapsedTimeMs = getCurrentRecordingTime();
+                    const now = Date.now();
+                    
+                    // Convert to canvas coordinates
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    // Store in mouse data
+                    mouseData.push({
+                        type: 'move',
+                        x: x,
+                        y: y,
+                        timeOffset: elapsedTimeMs,
+                        realTime: now,
+                        isLaserPointer: true, // This is definitely a laser pointer (left button pressed)
+                        source: 'document', // Mark that this came from document listener
+                        buttons: e.buttons
+                    });
+                    
+                    // Call the hook to ensure visual cursor trails match
+                    if (typeof window.updateCursorTrail === 'function') {
+                        window.updateCursorTrail({x: x, y: y});
+                    }
+                    
+                    if (Math.random() < 0.01) {
+                        logMessage(`Captured laser move via document: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
+                        logMessage(`Total mouse data points: ${mouseData.length}`, 'DEBUG');
+                    }
+                }
+            }
+        });
+        
+        // Add document level mouse down/up events
+        document.addEventListener('mousedown', function(e) {
+            if (!isRecording || isPaused) return;
+            
+            // Only process events over the canvas area
+            const rect = canvasEl.getBoundingClientRect();
+            if (e.clientX >= rect.left && e.clientX <= rect.right && 
+                e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                
+                // Only handle left button
+                if (e.button === 0) {
+                    // Get elapsed recording time
+                    const elapsedTimeMs = getCurrentRecordingTime();
+                    const now = Date.now();
+                    
+                    // Convert to canvas coordinates
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    logMessage(`Document mousedown detected over canvas at (${Math.round(x)}, ${Math.round(y)})`, 'INFO');
+                    
+                    // Store in mouse data
+                    mouseData.push({
+                        type: 'down',
+                        button: e.button,
+                        x: x,
+                        y: y,
+                        timeOffset: elapsedTimeMs,
+                        realTime: now,
+                        isLaserPointer: true, // This is a laser pointer activation
+                        source: 'document' // Mark that this came from document listener
+                    });
+                    
+                    logMessage(`Added mousedown event via document listener - total data points: ${mouseData.length}`, 'DEBUG');
+                }
+            }
+        });
+        
+        document.addEventListener('mouseup', function(e) {
+            if (!isRecording || isPaused) return;
+            
+            // Only process events over the canvas area
+            const rect = canvasEl.getBoundingClientRect();
+            if (e.clientX >= rect.left && e.clientX <= rect.right && 
+                e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                
+                // Only handle left button
+                if (e.button === 0) {
+                    // Get elapsed recording time
+                    const elapsedTimeMs = getCurrentRecordingTime();
+                    const now = Date.now();
+                    
+                    // Convert to canvas coordinates
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    logMessage(`Document mouseup detected over canvas at (${Math.round(x)}, ${Math.round(y)})`, 'INFO');
+                    
+                    // Store in mouse data
+                    mouseData.push({
+                        type: 'up',
+                        button: e.button,
+                        x: x,
+                        y: y,
+                        timeOffset: elapsedTimeMs,
+                        realTime: now,
+                        isLaserPointer: true, // This is a laser pointer deactivation
+                        source: 'document' // Mark that this came from document listener
+                    });
+                    
+                    logMessage(`Added mouseup event via document listener - total data points: ${mouseData.length}`, 'DEBUG');
+                }
+            }
+        });
+        
+        logMessage('Mouse data capture started', 'INFO');
         logMessage('Mouse events will be captured and stored in the JSON', 'INFO');
+        logMessage('HOW TO USE LASER POINTER: Click and drag on the image while recording', 'INFO');
     } else {
         logMessage('Canvas not available for mouse tracking', 'WARN');
     }
@@ -446,22 +666,42 @@ function stopCaptureMouseData() {
         // Log details about the captured mouse data
         logMessage('Mouse data capture stopped', 'DEBUG');
         
+        // Check if we actually captured any data
+        if (mouseData.length === 0) {
+            logMessage('WARNING: No mouse data was captured during recording!', 'WARN');
+            logMessage('Check the following:', 'WARN');
+            logMessage('1. Did you move your mouse over the canvas while recording?', 'INFO');
+            logMessage('2. Is the cursor trail enabled? (checkbox should be checked)', 'INFO');
+            logMessage('3. Did you press the left mouse button to activate the laser pointer?', 'INFO');
+            logMessage('4. Check browser console for errors in event handling', 'INFO');
+            return;
+        }
+        
         // Count different types of mouse events
         const moveCount = mouseData.filter(d => d.type === 'move').length;
         const downCount = mouseData.filter(d => d.type === 'down').length;
         const upCount = mouseData.filter(d => d.type === 'up').length;
         const laserCount = mouseData.filter(d => d.isLaserPointer).length;
+        const directCount = mouseData.filter(d => d.source === 'direct').length;
+        const cursorTrailCount = mouseData.filter(d => d.source === 'cursorTrail').length;
         
         logMessage(`Captured ${mouseData.length} mouse data points total:`, 'INFO');
         logMessage(`- ${moveCount} move events`, 'INFO');
         logMessage(`- ${downCount} down events`, 'INFO');
         logMessage(`- ${upCount} up events`, 'INFO');
         logMessage(`- ${laserCount} laser pointer events`, 'INFO');
+        logMessage(`- ${directCount} direct capture events`, 'INFO');
+        logMessage(`- ${cursorTrailCount} cursor trail events`, 'INFO');
         
         // Log a few sample points if available
         if (mouseData.length > 0) {
-            logMessage('Sample mouse data point:', 'DEBUG');
+            logMessage('First mouse data point:', 'DEBUG');
             logMessage(JSON.stringify(mouseData[0], null, 2), 'DEBUG');
+            
+            if (mouseData.length > 1) {
+                logMessage('Last mouse data point:', 'DEBUG');
+                logMessage(JSON.stringify(mouseData[mouseData.length - 1], null, 2), 'DEBUG');
+            }
         } else {
             logMessage('WARNING: No mouse data was captured during recording!', 'WARN');
             logMessage('Check that the mouse event listeners are working properly', 'DEBUG');
@@ -474,7 +714,18 @@ function stopCaptureMouseData() {
  * @param {MouseEvent} e - Mouse event
  */
 function captureMouseMove(e) {
-    if (!isRecording) return;
+    if (!isRecording) {
+        // If we're not recording, don't process further
+        if (Math.random() < 0.001) {
+            logMessage('Mouse move ignored - not recording', 'DEBUG');
+        }
+        return;
+    }
+    
+    // Log receiving the event occasionally
+    if (Math.random() < 0.001) {
+        logMessage(`Mouse move event received - type: ${e.type}, buttons: ${e.buttons}`, 'DEBUG');
+    }
     
     const now = Date.now();
     
@@ -482,7 +733,9 @@ function captureMouseMove(e) {
     const isLaserActive = 
         window.showCursorTail === true || 
         window.cursorTrailActive === true ||
-        document.body.classList.contains('laser-active');
+        document.body.classList.contains('laser-active') ||
+        (window.drawingTools && window.drawingTools.currentTool === 'laser' && e.buttons === 1) || // Left button pressed
+        e.buttons === 1; // Simplify - if left button is pressed, consider it laser active
     
     // Throttle mouse move events to avoid excessive data points
     // Only capture if it's been at least MOUSE_MOVE_CAPTURE_INTERVAL ms since last capture
@@ -496,7 +749,26 @@ function captureMouseMove(e) {
     
     // Get canvas and position
     const canvas = window.canvas;
-    const pointer = canvas.getPointer(e);
+    
+    if (!canvas) {
+        logMessage('Canvas not available during mouse move capture', 'WARN');
+        return;
+    }
+    
+    // Get pointer coordinates
+    let pointer;
+    try {
+        // Get from fabric canvas if possible
+        pointer = canvas.getPointer(e);
+    } catch (err) {
+        // Fallback to using client coordinates
+        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
+        pointer = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+        logMessage(`Used fallback coordinates: (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+    }
     
     // Get elapsed recording time
     const elapsedTimeMs = getCurrentRecordingTime();
@@ -513,7 +785,8 @@ function captureMouseMove(e) {
         y: pointer.y,
         timeOffset: elapsedTimeMs, // Time in ms from recording start
         realTime: now,
-        isLaserPointer: isLaserActive // Flag if this is a laser pointer movement
+        isLaserPointer: isLaserActive, // Flag if this is a laser pointer movement
+        buttons: e.buttons   // Store the button state for debugging
     });
 }
 
@@ -522,28 +795,50 @@ function captureMouseMove(e) {
  * @param {MouseEvent} e - Mouse event
  */
 function captureMouseDown(e) {
-    if (!isRecording) return;
+    if (!isRecording) {
+        logMessage('Mouse down ignored - not recording', 'DEBUG');
+        return;
+    }
+    
+    // Log event details
+    logMessage(`Mouse down event received - type: ${e.type}, button: ${e.button}`, 'INFO');
     
     // Get canvas and position
     const canvas = window.canvas;
-    const pointer = canvas.getPointer(e);
+    
+    if (!canvas) {
+        logMessage('Canvas not available during mouse down capture', 'WARN');
+        return;
+    }
+    
+    // Get pointer coordinates
+    let pointer;
+    try {
+        // Get from fabric canvas if possible
+        pointer = canvas.getPointer(e);
+    } catch (err) {
+        // Fallback to using client coordinates
+        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
+        pointer = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+        logMessage(`Used fallback coordinates for mouse down: (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+    }
     
     // Get elapsed recording time
     const elapsedTimeMs = getCurrentRecordingTime();
     
-    // Check if cursor trail/laser pointer is enabled - try multiple ways to detect this
-    const isLaserEnabled = 
-        window.cursorTrailEnabled === true || 
-        window.laserEnabled === true || 
-        (typeof getCurrentTool === 'function' && getCurrentTool() === 'laser');
+    // Check if laser pointer is active using all available methods
+    const isDrawingTools = window.drawingTools && window.drawingTools.currentTool === 'laser';
+    const isCursorTrail = window.cursorTrailEnabled === true;
+    const isLaserEnabled = isDrawingTools || isCursorTrail || e.button === 0; // Consider any left click as laser
     
-    // Debug log all the different ways to check if laser is enabled
-    logMessage(`Laser detection - cursorTrailEnabled: ${window.cursorTrailEnabled}, ` +
-               `laserEnabled: ${window.laserEnabled}, ` +
-               `getCurrentTool: ${typeof getCurrentTool === 'function' ? getCurrentTool() : 'undefined'}`, 'DEBUG');
+    // Debug log laser detection details
+    logMessage(`Laser detection on mouse down - drawingTools: ${isDrawingTools}, cursorTrail: ${isCursorTrail}, button: ${e.button}`, 'DEBUG');
     
     // Log what we're capturing
-    logMessage(`Capturing mouse down: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}, laser: ${isLaserEnabled}`, 'DEBUG');
+    logMessage(`Capturing mouse down: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}, laser: ${isLaserEnabled}`, 'INFO');
     
     // Store mouse data with timestamp
     mouseData.push({
@@ -553,8 +848,12 @@ function captureMouseDown(e) {
         y: pointer.y,
         timeOffset: elapsedTimeMs, // Time in ms from recording start
         realTime: Date.now(),
-        isLaserPointer: isLaserEnabled && e.button === 0 // Flag if this is a laser pointer activation
+        isLaserPointer: isLaserEnabled && e.button === 0, // Flag if this is a laser pointer activation
+        source: 'normal' // Mark the source
     });
+    
+    logMessage(`Added mouse DOWN event at coordinates (${Math.round(pointer.x)}, ${Math.round(pointer.y)}) to mouse data array`, 'DEBUG');
+    logMessage(`Total mouse data points now: ${mouseData.length}`, 'DEBUG');
 }
 
 /**
@@ -691,6 +990,9 @@ function stopVolumeMeter() {
 function saveAnnotationData() {
     try {
         logMessage('Preparing annotation data for download...', 'INFO');
+        
+        // Log diagnostics about the mouse data being saved
+        logMouseDataDiagnostics(mouseData, 'save');
         
         // Check if we have a canvas with an image
         if (!window.canvas) {
@@ -1084,6 +1386,9 @@ function replayAnnotation() {
     }
     
     try {
+        // Log detailed diagnostics about mouse data before replay
+        logMouseDataDiagnostics(mouseData, 'replay');
+        
         logMessage('Starting replay of annotation data', 'INFO');
         
         // Create a replay cursor if it doesn't exist
@@ -1091,20 +1396,46 @@ function replayAnnotation() {
         
         // Variables to track replay state
         let isReplaying = true;
+        let isPaused = false;
         let replayStartTime = Date.now();
+        let pauseStartTime = 0;
+        let totalPausedTime = 0;
         let audioElement = null;
         let animationFrameId = null;
+        let audioStartedPlaying = false;
+        
+        // Create controls for the replay
+        createReplayControls();
+        
+        // Log the current cursor size being used for replay
+        logMessage(`Replay starting with cursor size: ${window.cursorSize || 20}px`, 'INFO');
+        
+        // Sort mouse data by timeOffset for reliable playback
+        const sortedMouseData = [...mouseData].sort((a, b) => a.timeOffset - b.timeOffset);
+        
+        if (sortedMouseData.length > 0) {
+            logMessage(`Replay has ${sortedMouseData.length} mouse data points`, 'INFO');
+        }
         
         // If we have audio, play it
         if (audioBlob) {
             const audioURL = URL.createObjectURL(audioBlob);
             audioElement = new Audio(audioURL);
             
+            // Add a timeupdate event to more precisely sync annotations with audio
+            audioElement.addEventListener('timeupdate', function() {
+                // If this is the first timeupdate event, sync the start time
+                if (!audioStartedPlaying) {
+                    audioStartedPlaying = true;
+                    // Reset replay start time when audio actually starts playing
+                    replayStartTime = Date.now() - (audioElement.currentTime * 1000);
+                    logMessage(`Audio playback started, elapsed: ${audioElement.currentTime.toFixed(2)}s`, 'DEBUG');
+                }
+            });
+            
             // Set up event listeners
             audioElement.onplay = function() {
-                logMessage('Audio playback started', 'DEBUG');
-                // Reset replay start time when audio actually starts
-                replayStartTime = Date.now();
+                logMessage('Audio playback initiated', 'DEBUG');
             };
             
             audioElement.onended = function() {
@@ -1114,28 +1445,129 @@ function replayAnnotation() {
                     cancelAnimationFrame(animationFrameId);
                 }
                 hideReplayCursor();
+                removeReplayControls();
                 URL.revokeObjectURL(audioURL);
             };
             
             // Play the audio
+            logMessage('Starting audio playback...', 'DEBUG');
             audioElement.play().catch(error => {
                 logMessage('Error playing audio: ' + error.message, 'ERROR');
                 // Continue with cursor replay even if audio fails
+                logMessage('Continuing with visual replay only', 'WARN');
             });
         }
         
-        // Sort mouse data by timeOffset for reliable playback
-        const sortedMouseData = [...mouseData].sort((a, b) => a.timeOffset - b.timeOffset);
+        // Function to pause the replay
+        window.pauseReplay = function() {
+            if (!isPaused && isReplaying) {
+                isPaused = true;
+                pauseStartTime = Date.now();
+                
+                // Pause audio if it exists
+                if (audioElement) {
+                    audioElement.pause();
+                }
+                
+                // Pause animation by cancelling the frame
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                
+                logMessage('Replay paused', 'INFO');
+                
+                // Update control button
+                const pauseButton = document.getElementById('replay-pause-btn');
+                if (pauseButton) {
+                    pauseButton.textContent = 'Resume';
+                }
+            }
+        };
+        
+        // Function to resume the replay
+        window.resumeReplay = function() {
+            if (isPaused && isReplaying) {
+                // Calculate how long we were paused
+                const pauseDuration = Date.now() - pauseStartTime;
+                totalPausedTime += pauseDuration;
+                
+                // Adjust start time to account for pause duration
+                replayStartTime += pauseDuration;
+                
+                // Resume audio if it exists
+                if (audioElement) {
+                    audioElement.play().catch(error => {
+                        logMessage('Error resuming audio: ' + error.message, 'ERROR');
+                    });
+                }
+                
+                // Resume animation
+                if (!animationFrameId && currentDataIndex < sortedMouseData.length) {
+                    animationFrameId = requestAnimationFrame(updateCursorPosition);
+                }
+                
+                isPaused = false;
+                pauseStartTime = 0;
+                
+                logMessage('Replay resumed', 'INFO');
+                
+                // Update control button
+                const pauseButton = document.getElementById('replay-pause-btn');
+                if (pauseButton) {
+                    pauseButton.textContent = 'Pause';
+                }
+            }
+        };
+        
+        // Function to toggle pause/resume
+        window.toggleReplayPause = function() {
+            if (isPaused) {
+                window.resumeReplay();
+            } else {
+                window.pauseReplay();
+            }
+        };
+        
+        // Function to stop the replay
+        window.stopReplay = function() {
+            isReplaying = false;
+            
+            // Stop audio if it exists
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.currentTime = 0;
+            }
+            
+            // Cancel animation
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
+            // Hide cursor and cleanup
+            hideReplayCursor();
+            removeReplayControls();
+            
+            logMessage('Replay stopped by user', 'INFO');
+            
+            // Reset replay button
+            const replayBtn = document.getElementById('replay-btn');
+            if (replayBtn) {
+                replayBtn.textContent = 'Replay Recording';
+                replayBtn.disabled = false;
+            }
+        };
         
         // If we have mouse data, animate it
+        let currentDataIndex = 0;
+        
         if (sortedMouseData.length > 0) {
-            let currentDataIndex = 0;
-            
             // Function to update cursor position based on elapsed time
             function updateCursorPosition() {
-                if (!isReplaying) return;
+                if (!isReplaying || isPaused) return;
                 
-                // Calculate elapsed time since replay started
+                // Calculate elapsed time since replay started, accounting for pauses
                 const elapsedMs = Date.now() - replayStartTime;
                 
                 // Find all data points that should have happened by now
@@ -1144,6 +1576,11 @@ function replayAnnotation() {
                     
                     // Get the current data point
                     const dataPoint = sortedMouseData[currentDataIndex];
+                    
+                    // Log data point type for debugging (only for some points to avoid spam)
+                    if (currentDataIndex % 20 === 0 || dataPoint.type !== 'move') {
+                        logMessage(`Replay at ${elapsedMs}ms: ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})${dataPoint.isLaserPointer ? ' (laser)' : ''}`, 'DEBUG');
+                    }
                     
                     // Update cursor position
                     updateReplayCursor(dataPoint);
@@ -1154,17 +1591,26 @@ function replayAnnotation() {
                 
                 // If we've gone through all data points
                 if (currentDataIndex >= sortedMouseData.length) {
-                    // If we don't have audio, end the replay
-                    if (!audioElement) {
+                    // If we don't have audio or audio has ended, end the replay
+                    if (!audioElement || (audioElement && audioElement.ended)) {
                         isReplaying = false;
                         hideReplayCursor();
+                        removeReplayControls();
                         logMessage('Replay completed', 'INFO');
+                        
+                        // Reset replay button
+                        const replayBtn = document.getElementById('replay-btn');
+                        if (replayBtn) {
+                            replayBtn.textContent = 'Replay Recording';
+                            replayBtn.disabled = false;
+                        }
+                        
                         return;
                     }
                 } 
                 
                 // Continue animation
-                if (isReplaying) {
+                if (isReplaying && !isPaused) {
                     animationFrameId = requestAnimationFrame(updateCursorPosition);
                 }
             }
@@ -1175,6 +1621,13 @@ function replayAnnotation() {
             // If we only have audio but no mouse data
             logMessage('Playing audio only (no mouse data to replay)', 'INFO');
         }
+        
+        // Add UI indicator that replay is in progress
+        const replayBtn = document.getElementById('replay-btn');
+        if (replayBtn) {
+            replayBtn.textContent = 'Replaying...';
+            replayBtn.disabled = true;
+        }
     } catch (error) {
         console.error('Error replaying annotation:', error);
         logMessage('Error replaying: ' + error.message, 'ERROR');
@@ -1182,9 +1635,75 @@ function replayAnnotation() {
 }
 
 /**
+ * Create controls for pause/resume/stop during replay
+ */
+function createReplayControls() {
+    // Remove any existing controls first
+    removeReplayControls();
+    
+    // Create controls container
+    const controlsContainer = document.createElement('div');
+    controlsContainer.id = 'replay-controls';
+    controlsContainer.className = 'replay-controls';
+    controlsContainer.style.position = 'absolute';
+    controlsContainer.style.top = '10px';
+    controlsContainer.style.right = '10px';
+    controlsContainer.style.zIndex = '1100';
+    controlsContainer.style.display = 'flex';
+    controlsContainer.style.gap = '5px';
+    
+    // Create pause/resume button
+    const pauseBtn = document.createElement('button');
+    pauseBtn.id = 'replay-pause-btn';
+    pauseBtn.className = 'btn btn-sm btn-warning';
+    pauseBtn.textContent = 'Pause';
+    pauseBtn.onclick = function() {
+        if (typeof window.toggleReplayPause === 'function') {
+            window.toggleReplayPause();
+        }
+    };
+    
+    // Create stop button
+    const stopBtn = document.createElement('button');
+    stopBtn.id = 'replay-stop-btn';
+    stopBtn.className = 'btn btn-sm btn-danger';
+    stopBtn.textContent = 'Stop';
+    stopBtn.onclick = function() {
+        if (typeof window.stopReplay === 'function') {
+            window.stopReplay();
+        }
+    };
+    
+    // Add buttons to container
+    controlsContainer.appendChild(pauseBtn);
+    controlsContainer.appendChild(stopBtn);
+    
+    // Add container to the canvas container
+    const canvasContainer = document.getElementById('image-container');
+    if (canvasContainer) {
+        canvasContainer.appendChild(controlsContainer);
+    } else {
+        document.body.appendChild(controlsContainer);
+    }
+}
+
+/**
+ * Remove replay controls
+ */
+function removeReplayControls() {
+    const controls = document.getElementById('replay-controls');
+    if (controls && controls.parentNode) {
+        controls.parentNode.removeChild(controls);
+    }
+}
+
+/**
  * Create or get the replay cursor element
  */
 function createReplayCursor() {
+    // Get the cursor size from global setting or use default
+    const cursorSize = window.cursorSize || 20;
+    
     // Check if cursor already exists
     let cursor = document.getElementById('replay-cursor');
     if (!cursor) {
@@ -1193,8 +1712,8 @@ function createReplayCursor() {
         cursor.id = 'replay-cursor';
         cursor.className = 'replay-cursor';
         cursor.style.position = 'absolute';
-        cursor.style.width = '20px';
-        cursor.style.height = '20px';
+        cursor.style.width = `${cursorSize}px`;
+        cursor.style.height = `${cursorSize}px`;
         cursor.style.borderRadius = '50%';
         cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
         cursor.style.border = '2px solid red';
@@ -1211,6 +1730,10 @@ function createReplayCursor() {
     } else {
             document.body.appendChild(cursor);
         }
+        } else {
+        // Update existing cursor size
+        cursor.style.width = `${cursorSize}px`;
+        cursor.style.height = `${cursorSize}px`;
     }
     
     // Show the cursor
@@ -1224,11 +1747,21 @@ function createReplayCursor() {
  */
 function updateReplayCursor(dataPoint) {
     const cursor = document.getElementById('replay-cursor');
-    if (!cursor) return;
+    if (!cursor) {
+        logMessage('Replay cursor element not found!', 'ERROR');
+        return;
+    }
     
     // Get canvas position and scale
     const canvas = window.canvas;
-    if (!canvas) return;
+    if (!canvas) {
+        logMessage('Canvas not available for replay', 'ERROR');
+        return;
+    }
+    
+    // Get the cursor size from global setting or use default
+    const cursorSize = window.cursorSize || 20;
+    const largerSize = Math.round(cursorSize * 1.2); // 20% larger for mouse down
     
     // Calculate position
     const x = dataPoint.x;
@@ -1238,28 +1771,42 @@ function updateReplayCursor(dataPoint) {
     cursor.style.left = `${x}px`;
     cursor.style.top = `${y}px`;
     
+    // Enhanced debugging for laser pointer events
+    if (dataPoint.isLaserPointer === true) {
+        if (dataPoint.type !== 'move') {
+            logMessage(`Laser pointer ${dataPoint.type} event at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
+        }
+    }
+    
     // Show cursor events 
     if (dataPoint.type === 'down') {
         // Mouse down - make cursor larger and more opaque
-        cursor.style.width = '24px';
-        cursor.style.height = '24px';
+        cursor.style.width = `${largerSize}px`;
+        cursor.style.height = `${largerSize}px`;
         cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
         
         // If this is a laser pointer activation, start drawing the trail
         if (dataPoint.isLaserPointer) {
+            logMessage(`Starting laser trail at DOWN event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
             startLaserTrail();
         }
     } else if (dataPoint.type === 'up') {
         // Mouse up - return to normal
-        cursor.style.width = '20px';
-        cursor.style.height = '20px';
+        cursor.style.width = `${cursorSize}px`;
+        cursor.style.height = `${cursorSize}px`;
         cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
         
         // If this is a laser pointer deactivation, clear the trail
         if (dataPoint.isLaserPointer) {
+            logMessage(`Clearing laser trail at UP event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
             clearLaserTrail();
         }
     } else if (dataPoint.type === 'move' && dataPoint.isLaserPointer) {
+        // Log only occasionally to avoid flooding
+        if (Math.random() < 0.05) {
+            logMessage(`Adding to laser trail at MOVE event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
+        }
+        
         // If this is a laser pointer movement, add to the trail
         addToLaserTrail(x, y);
     }
@@ -1332,7 +1879,7 @@ function prepareEmailData(emailAddress, senderName, notification) {
     
     // Create annotation data object similar to when saving
     const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 16);
-    const annotationData = {
+        const annotationData = {
         timestamp: timestamp,
         image: {
             dataUrl: null,
@@ -1343,7 +1890,7 @@ function prepareEmailData(emailAddress, senderName, notification) {
             dataUrl: null,
             duration: 0
         },
-        mouseData: mouseData || [],
+            mouseData: mouseData || [],
         annotations: []
     };
     
@@ -1399,7 +1946,7 @@ ${base64Data}
                 // Reset UI elements
                 resetEmailButton();
                 
-            } catch (error) {
+    } catch (error) {
                 console.error('Error encoding data for email:', error);
                 logMessage('Error encoding data for email: ' + error.message, 'ERROR');
                 resetEmailButton();
@@ -1494,7 +2041,7 @@ function showEmailDataDialog(emailBody, emailAddress, base64Data) {
         emailBody.substring(0, previewLength) + '...' : emailBody;
     
     // Wait for the modal to be fully added to DOM
-    setTimeout(() => {
+        setTimeout(() => {
         // Get references to elements
         const previewTextarea = document.getElementById('emailPreview');
         const saveButton = document.getElementById('saveEmailDataBtn');
@@ -1529,7 +2076,7 @@ function showEmailDataDialog(emailBody, emailAddress, base64Data) {
         
         // Log success
         logMessage('Email data ready - showing options dialog', 'INFO');
-    }, 100);
+        }, 100);
 }
 
 /**
@@ -1605,6 +2152,8 @@ function resetEmailButton() {
  * Start a new laser pointer trail during replay
  */
 function startLaserTrail() {
+    logMessage('Starting laser pointer trail', 'DEBUG');
+    
     // Clear any existing trail first
     clearLaserTrail();
     
@@ -1625,6 +2174,9 @@ function startLaserTrail() {
         const canvasContainer = document.getElementById('image-container');
         if (canvasContainer) {
             canvasContainer.appendChild(trailContainer);
+            logMessage('Created new laser trail container', 'DEBUG');
+        } else {
+            logMessage('Error: Cannot find canvas container for laser trail', 'ERROR');
         }
     }
     
@@ -1634,23 +2186,34 @@ function startLaserTrail() {
     // Initialize trail points array for this session
     window.currentLaserTrail = [];
     
-    logMessage('Laser pointer trail started in replay', 'DEBUG');
+    logMessage('Laser pointer trail initialized', 'DEBUG');
 }
 
 /**
- * Add a point to the current laser trail during replay
+ * Add a point to the laser trail during replay
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
  */
 function addToLaserTrail(x, y) {
-    if (!window.currentLaserTrail) {
-        startLaserTrail();
+    if (x === undefined || y === undefined) {
+        logMessage('Error: Invalid coordinates for laser trail', 'ERROR');
+        return;
     }
     
-    // Add this point to the trail
-    window.currentLaserTrail.push({ x, y });
+    // Initialize the trail array if it doesn't exist
+    if (!window.currentLaserTrail) {
+        window.currentLaserTrail = [];
+        logMessage('Initializing laser trail array', 'DEBUG');
+    }
     
-    // Keep only the last 20 points for performance
+    // Add point to the trail
+    window.currentLaserTrail.push({ 
+        x: x, 
+        y: y,
+        time: Date.now() // Add timestamp for aging effect
+    });
+    
+    // Keep only the last 20 points to avoid performance issues
     if (window.currentLaserTrail.length > 20) {
         window.currentLaserTrail.shift();
     }
@@ -1664,26 +2227,54 @@ function addToLaserTrail(x, y) {
  */
 function drawLaserTrail() {
     const trailContainer = document.getElementById('laser-trail-container');
-    if (!trailContainer || !window.currentLaserTrail) return;
+    if (!trailContainer) {
+        logMessage('Error: Cannot find laser trail container', 'ERROR');
+        return;
+    }
+    
+    if (!window.currentLaserTrail || window.currentLaserTrail.length === 0) {
+        // Nothing to draw
+        return;
+    }
     
     // Clear current trail
     trailContainer.innerHTML = '';
     
-    // Draw each point in the trail with decreasing opacity
-    window.currentLaserTrail.forEach((point, index) => {
+    // Get the cursor size from global setting or use a default
+    const cursorSize = window.cursorSize || 10;
+    
+    // Get current time for aging calculation
+    const now = Date.now();
+    
+    // Draw each point in the trail with opacity and size based on position and age
+    window.currentLaserTrail.forEach((point, index, array) => {
         const pointElement = document.createElement('div');
         pointElement.className = 'laser-trail-point';
         
-        // Calculate opacity based on position in the trail (newer points are more opaque)
-        const opacity = 0.1 + (index / window.currentLaserTrail.length) * 0.7;
-        const size = 5 + (index / window.currentLaserTrail.length) * 10;
+        // Calculate position in trail (0 to 1, where 1 is newest)
+        const positionFactor = index / (array.length - 1);
         
-        // Style the point
+        // Calculate age factor (1 is fresh, 0 is old)
+        const AGE_DURATION = 1000; // 1 second until fully faded
+        const age = point.time ? now - point.time : 0;
+        const ageFactor = Math.max(0, 1 - (age / AGE_DURATION));
+        
+        // Combine position and age for final opacity
+        const opacity = Math.min(0.9, 0.1 + (positionFactor * 0.7) * ageFactor);
+        
+        // Calculate size - newer points should be larger
+        const baseSize = cursorSize * 0.5; // Smallest size
+        const maxSize = cursorSize; // Largest size
+        const size = baseSize + positionFactor * (maxSize - baseSize) * ageFactor;
+        
+        // Style the point - make it more visible with drop shadow and border
         pointElement.style.width = `${size}px`;
         pointElement.style.height = `${size}px`;
-        pointElement.style.backgroundColor = `rgba(255, 0, 0, ${opacity})`;
+        pointElement.style.backgroundColor = `rgba(255, 30, 30, ${opacity})`; // Slightly brighter red
         pointElement.style.left = `${point.x}px`;
         pointElement.style.top = `${point.y}px`;
+        pointElement.style.boxShadow = `0 0 ${Math.round(size/2)}px rgba(255, 0, 0, ${opacity * 0.8})`;
+        pointElement.style.border = `1px solid rgba(255, 255, 255, ${opacity * 0.5})`;
         
         // Add to container
         trailContainer.appendChild(pointElement);
@@ -1694,10 +2285,152 @@ function drawLaserTrail() {
  * Clear the laser trail during replay
  */
 function clearLaserTrail() {
+    logMessage('Clearing laser trail', 'DEBUG');
+    
     const trailContainer = document.getElementById('laser-trail-container');
     if (trailContainer) {
         trailContainer.innerHTML = '';
+    } else {
+        logMessage('Warning: Laser trail container not found for clearing', 'WARN');
     }
     
     window.currentLaserTrail = null;
-} 
+}
+
+/**
+ * Generate diagnostic summary of mouse data 
+ * @param {Array} data - Mouse data array to analyze
+ * @returns {Object} Object containing diagnostic information
+ */
+function generateMouseDataDiagnostics(data) {
+    if (!Array.isArray(data) || data.length === 0) {
+        return {
+            total: 0,
+            laserPointer: 0,
+            move: 0,
+            down: 0,
+            up: 0,
+            laserSessions: 0,
+            samplePoint: null,
+            duration: 0
+        };
+    }
+    
+    // Create diagnostics object
+    const diagnostics = {
+        total: data.length,
+        laserPointer: data.filter(d => d.isLaserPointer === true).length,
+        move: data.filter(d => d.type === 'move').length,
+        down: data.filter(d => d.type === 'down').length,
+        up: data.filter(d => d.type === 'up').length,
+        laserMove: data.filter(d => d.type === 'move' && d.isLaserPointer === true).length,
+        samplePoint: data.length > 0 ? data[0] : null,
+        duration: 0
+    };
+    
+    // Count laser pointer sessions (periods between down and up)
+    let sessions = 0;
+    let inSession = false;
+    
+    for (const point of data) {
+        if (point.isLaserPointer) {
+            if (point.type === 'down') {
+                inSession = true;
+                sessions++;
+            } else if (point.type === 'up') {
+                inSession = false;
+            }
+        }
+    }
+    
+    diagnostics.laserSessions = sessions;
+    
+    // Calculate recording duration
+    if (data.length > 1) {
+        const sortedData = [...data].sort((a, b) => a.timeOffset - b.timeOffset);
+        diagnostics.duration = sortedData[sortedData.length - 1].timeOffset - sortedData[0].timeOffset;
+    }
+    
+    return diagnostics;
+}
+
+/**
+ * Log diagnostics about mouse data
+ * @param {Array} data - Mouse data array to analyze
+ * @param {string} context - Context for the log (e.g., 'save', 'replay')
+ */
+function logMouseDataDiagnostics(data, context) {
+    const diagnostics = generateMouseDataDiagnostics(data);
+    
+    logMessage(`MOUSE DATA DIAGNOSTICS (${context.toUpperCase()}):`, 'INFO');
+    logMessage(`Total mouse data points: ${diagnostics.total}`, 'INFO');
+    logMessage(`Laser pointer points: ${diagnostics.laserPointer}`, 'INFO');
+    logMessage(`Move events: ${diagnostics.move} (${diagnostics.laserMove} laser moves)`, 'INFO');
+    logMessage(`Down events: ${diagnostics.down}`, 'INFO');
+    logMessage(`Up events: ${diagnostics.up}`, 'INFO');
+    logMessage(`Laser pointer sessions: ${diagnostics.laserSessions}`, 'INFO');
+    logMessage(`Recording duration: ${Math.round(diagnostics.duration / 1000)} seconds`, 'INFO');
+    
+    if (diagnostics.laserPointer === 0) {
+        logMessage(`WARNING: No laser pointer data found!`, 'WARN');
+    } else if (diagnostics.samplePoint) {
+        // Log a sample point
+        const sample = diagnostics.samplePoint;
+        logMessage(`Sample data point: type=${sample.type}, x=${Math.round(sample.x)}, y=${Math.round(sample.y)}, isLaserPointer=${sample.isLaserPointer}`, 'DEBUG');
+    }
+}
+
+/**
+ * Save raw mouse data for debugging purposes
+ * This creates a simplified JSON file with just the mouse movements
+ */
+function saveMouseDataForDebug() {
+    try {
+        if (mouseData.length === 0) {
+            logMessage('No mouse data to save for debugging', 'WARN');
+            return;
+        }
+        
+        // Get current timestamp for filename
+        const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+        const filename = `mouse-data-debug-${timestamp}.json`;
+        
+        // Create diagnostics report
+        const diagnostics = generateMouseDataDiagnostics(mouseData);
+        
+        // Create debug object with diagnostics and raw data
+        const debugData = {
+            metadata: {
+                timestamp: timestamp,
+                diagnostics: diagnostics
+            },
+            mouseData: mouseData
+        };
+        
+        // Convert to JSON and save
+        const jsonString = JSON.stringify(debugData, null, 2);
+        const jsonBlob = new Blob([jsonString], { type: 'application/json' });
+        
+        // Download the file
+        downloadFile(jsonBlob, filename);
+        
+        logMessage(`Mouse data saved for debugging to ${filename}`, 'INFO');
+        logMessage(`File contains ${mouseData.length} mouse data points`, 'INFO');
+        
+        return true;
+    } catch (error) {
+        console.error('Error saving debug mouse data:', error);
+        logMessage('Error saving debug data: ' + error.message, 'ERROR');
+        return false;
+    }
+}
+
+// Export functions for use in other modules
+window.startCaptureMouseData = startCaptureMouseData;
+window.stopCaptureMouseData = stopCaptureMouseData;
+window.isRecording = isRecording;
+window.startLaserTrail = startLaserTrail;
+window.clearLaserTrail = clearLaserTrail;
+window.addToLaserTrail = addToLaserTrail;
+window.drawLaserTrail = drawLaserTrail;
+window.saveMouseDataForDebug = saveMouseDataForDebug; 
