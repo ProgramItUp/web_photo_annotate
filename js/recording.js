@@ -81,6 +81,18 @@ function checkMicrophonePermission() {
                     return false;
                 } else {
                     logMessage('Microphone permission status: ' + permissionStatus.state, 'INFO');
+                    
+                    // Add event listener to track permission changes
+                    permissionStatus.onchange = function() {
+                        logMessage('Microphone permission changed to: ' + this.state, 'INFO');
+                        if (this.state === 'granted') {
+                            microphoneInitialized = true;
+                            microphoneAccessDenied = false;
+                        } else if (this.state === 'denied') {
+                            microphoneAccessDenied = true;
+                        }
+                    };
+                    
                     return false;
                 }
             })
@@ -103,6 +115,27 @@ function initializeMicrophone() {
     
     logMessage('Initializing microphone access...', 'INFO');
     
+    // Check if site is served over HTTPS, which is required for persistent permissions
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        logMessage('Warning: Microphone permissions can only be persistent on HTTPS sites', 'WARN');
+        // We'll still check, but show a warning to the user
+        const httpsWarning = document.createElement('div');
+        httpsWarning.className = 'alert alert-warning p-1 m-2 small';
+        httpsWarning.innerHTML = 'This site is not running on HTTPS. Microphone permissions will be requested each time.';
+        httpsWarning.style.position = 'fixed';
+        httpsWarning.style.top = '0';
+        httpsWarning.style.right = '0';
+        httpsWarning.style.zIndex = '9999';
+        document.body.appendChild(httpsWarning);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (httpsWarning.parentNode) {
+                httpsWarning.parentNode.removeChild(httpsWarning);
+            }
+        }, 5000);
+    }
+    
     // First check if permission is already granted
     checkMicrophonePermission()
         .then(isGranted => {
@@ -111,23 +144,95 @@ function initializeMicrophone() {
                 return;
             }
             
-            // Request microphone access once at page load
-            return navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(function(stream) {
-                    audioStream = stream;
-                    microphoneInitialized = true;
-                    
-                    // Stop the tracks for now to save resources, but keep the permission
-                    stream.getTracks().forEach(track => track.stop());
-                    audioStream = null;
-                    
-                    logMessage('Microphone access granted and initialized', 'INFO');
-                })
-                .catch(function(error) {
-                    console.error('Error accessing microphone during initialization:', error);
-                    logMessage('Error initializing microphone: ' + error.message, 'ERROR');
-                    microphoneAccessDenied = true;
-                });
+            // Add a prompt to inform users about microphone usage
+            const micPermissionInfo = document.createElement('div');
+            micPermissionInfo.className = 'alert alert-info p-2 m-2';
+            micPermissionInfo.innerHTML = 
+                '<strong>Microphone Permission</strong><br>' +
+                'This app uses your microphone for audio recording. ' +
+                '<button id="initialize-mic-btn" class="btn btn-sm btn-primary">Initialize Now</button>' +
+                '<button id="dismiss-mic-prompt" class="btn btn-sm btn-secondary ms-2">Later</button>';
+            micPermissionInfo.style.position = 'fixed';
+            micPermissionInfo.style.top = '10%';
+            micPermissionInfo.style.left = '50%';
+            micPermissionInfo.style.transform = 'translateX(-50%)';
+            micPermissionInfo.style.zIndex = '9999';
+            micPermissionInfo.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+            document.body.appendChild(micPermissionInfo);
+            
+            // Set up event listeners for the buttons
+            document.getElementById('initialize-mic-btn').addEventListener('click', function() {
+                // Request microphone access when user clicks the button
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(function(stream) {
+                        audioStream = stream;
+                        microphoneInitialized = true;
+                        
+                        // Stop the tracks for now to save resources, but keep the permission
+                        stream.getTracks().forEach(track => track.stop());
+                        audioStream = null;
+                        
+                        logMessage('Microphone access granted and initialized', 'INFO');
+                        
+                        // Remove the prompt
+                        if (micPermissionInfo.parentNode) {
+                            micPermissionInfo.parentNode.removeChild(micPermissionInfo);
+                        }
+                        
+                        // Show success message
+                        const successMsg = document.createElement('div');
+                        successMsg.className = 'alert alert-success p-2 m-2';
+                        successMsg.innerHTML = 'Microphone access granted successfully!';
+                        successMsg.style.position = 'fixed';
+                        successMsg.style.top = '10%';
+                        successMsg.style.left = '50%';
+                        successMsg.style.transform = 'translateX(-50%)';
+                        successMsg.style.zIndex = '9999';
+                        document.body.appendChild(successMsg);
+                        
+                        // Auto-remove after 3 seconds
+                        setTimeout(() => {
+                            if (successMsg.parentNode) {
+                                successMsg.parentNode.removeChild(successMsg);
+                            }
+                        }, 3000);
+                    })
+                    .catch(function(error) {
+                        console.error('Error accessing microphone during initialization:', error);
+                        logMessage('Error initializing microphone: ' + error.message, 'ERROR');
+                        microphoneAccessDenied = true;
+                        
+                        // Remove the prompt
+                        if (micPermissionInfo.parentNode) {
+                            micPermissionInfo.parentNode.removeChild(micPermissionInfo);
+                        }
+                        
+                        // Show error message
+                        const errorMsg = document.createElement('div');
+                        errorMsg.className = 'alert alert-danger p-2 m-2';
+                        errorMsg.innerHTML = 'Microphone access was denied. Recording will not be available.';
+                        errorMsg.style.position = 'fixed';
+                        errorMsg.style.top = '10%';
+                        errorMsg.style.left = '50%';
+                        errorMsg.style.transform = 'translateX(-50%)';
+                        errorMsg.style.zIndex = '9999';
+                        document.body.appendChild(errorMsg);
+                        
+                        // Auto-remove after 5 seconds
+                        setTimeout(() => {
+                            if (errorMsg.parentNode) {
+                                errorMsg.parentNode.removeChild(errorMsg);
+                            }
+                        }, 5000);
+                    });
+            });
+            
+            document.getElementById('dismiss-mic-prompt').addEventListener('click', function() {
+                // Just remove the prompt if user wants to decide later
+                if (micPermissionInfo.parentNode) {
+                    micPermissionInfo.parentNode.removeChild(micPermissionInfo);
+                }
+            });
         });
 }
 
@@ -427,11 +532,90 @@ function startAudioRecording() {
     
     // Check if microphone access was previously denied
     if (microphoneAccessDenied) {
-        alert('Microphone access was denied. Please reload the page and grant microphone permissions to record audio.');
+        // Create a more helpful dialog with options to retry
+        const deniedDialog = document.createElement('div');
+        deniedDialog.className = 'alert alert-warning p-3 m-2';
+        deniedDialog.innerHTML = 
+            '<h5>Microphone Access Required</h5>' +
+            '<p>Microphone access was previously denied. You need to allow microphone access in your browser settings to record audio.</p>' +
+            '<p><strong>To fix this:</strong></p>' +
+            '<ol>' +
+            '<li>Click the camera/microphone icon in your browser\'s address bar</li>' +
+            '<li>Change the microphone permission to "Allow"</li>' +
+            '<li>Refresh this page</li>' +
+            '</ol>' +
+            '<button id="retry-mic-access" class="btn btn-primary">Try Again</button>' +
+            '<button id="cancel-mic-dialog" class="btn btn-secondary ms-2">Cancel</button>';
+        deniedDialog.style.position = 'fixed';
+        deniedDialog.style.top = '50%';
+        deniedDialog.style.left = '50%';
+        deniedDialog.style.transform = 'translate(-50%, -50%)';
+        deniedDialog.style.zIndex = '10000';
+        deniedDialog.style.maxWidth = '500px';
+        deniedDialog.style.boxShadow = '0 5px 15px rgba(0,0,0,0.3)';
+        document.body.appendChild(deniedDialog);
+        
+        // Add backdrop
+        const backdrop = document.createElement('div');
+        backdrop.style.position = 'fixed';
+        backdrop.style.top = '0';
+        backdrop.style.left = '0';
+        backdrop.style.width = '100%';
+        backdrop.style.height = '100%';
+        backdrop.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        backdrop.style.zIndex = '9999';
+        document.body.appendChild(backdrop);
+        
+        // Set up button handlers
+        document.getElementById('retry-mic-access').addEventListener('click', function() {
+            // Reset access flags to try again
+            microphoneAccessDenied = false;
+            microphoneInitialized = false;
+            
+            // Remove dialog
+            document.body.removeChild(deniedDialog);
+            document.body.removeChild(backdrop);
+            
+            // Try to initialize microphone again
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(function(stream) {
+                    // Success - now start recording
+                    microphoneAccessDenied = false;
+                    microphoneInitialized = true;
+                    
+                    // Stop these tracks as we'll get new ones in the actual recording
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // Start recording process again
+                    startAudioRecording();
+                })
+                .catch(function(error) {
+                    console.error('Error on retry:', error);
+                    logMessage('Microphone access denied again: ' + error.message, 'ERROR');
+                    microphoneAccessDenied = true;
+                    alert('Microphone access was denied again. Please check your browser settings and refresh the page.');
+                });
+        });
+        
+        document.getElementById('cancel-mic-dialog').addEventListener('click', function() {
+            document.body.removeChild(deniedDialog);
+            document.body.removeChild(backdrop);
+        });
+        
         return;
     }
     
     logMessage('Starting audio recording...', 'INFO');
+    
+    // Show a loading indicator while we request permissions
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'alert alert-info p-2';
+    loadingIndicator.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div> Requesting microphone access...';
+    loadingIndicator.style.position = 'fixed';
+    loadingIndicator.style.top = '10px';
+    loadingIndicator.style.right = '10px';
+    loadingIndicator.style.zIndex = '9999';
+    document.body.appendChild(loadingIndicator);
     
     // First check if we already have permission
     checkMicrophonePermission()
@@ -440,6 +624,11 @@ function startAudioRecording() {
             return navigator.mediaDevices.getUserMedia({ audio: true });
         })
         .then(function(stream) {
+            // Remove the loading indicator
+            if (loadingIndicator.parentNode) {
+                loadingIndicator.parentNode.removeChild(loadingIndicator);
+            }
+            
             audioStream = stream;
             
             // Create new media recorder from the audio stream
@@ -499,11 +688,52 @@ function startAudioRecording() {
             console.error('Error accessing microphone:', error);
             logMessage('Error accessing microphone: ' + error.message, 'ERROR');
             
+            // Remove the loading indicator
+            if (loadingIndicator.parentNode) {
+                loadingIndicator.parentNode.removeChild(loadingIndicator);
+            }
+            
             // Update access denied flag
             microphoneAccessDenied = true;
             
-            // Show alert to user about microphone access being required
-            alert('Microphone access is required for recording. Please grant microphone permissions and try again.');
+            // Show better error message with help
+            const errorDialog = document.createElement('div');
+            errorDialog.className = 'alert alert-danger p-3 m-2';
+            errorDialog.innerHTML = 
+                '<h5>Microphone Access Required</h5>' +
+                '<p>This app needs microphone access to record audio annotations.</p>' +
+                '<p><strong>You can fix this by:</strong></p>' +
+                '<ol>' +
+                '<li>Click the camera/microphone icon in your browser\'s address bar</li>' +
+                '<li>Change the microphone permission to "Allow"</li>' +
+                '<li>Refresh this page</li>' +
+                '</ol>' +
+                '<button id="close-error-dialog" class="btn btn-primary">OK</button>';
+            errorDialog.style.position = 'fixed';
+            errorDialog.style.top = '50%';
+            errorDialog.style.left = '50%';
+            errorDialog.style.transform = 'translate(-50%, -50%)';
+            errorDialog.style.zIndex = '10000';
+            errorDialog.style.maxWidth = '500px';
+            errorDialog.style.boxShadow = '0 5px 15px rgba(0,0,0,0.3)';
+            document.body.appendChild(errorDialog);
+            
+            // Add backdrop
+            const backdrop = document.createElement('div');
+            backdrop.style.position = 'fixed';
+            backdrop.style.top = '0';
+            backdrop.style.left = '0';
+            backdrop.style.width = '100%';
+            backdrop.style.height = '100%';
+            backdrop.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            backdrop.style.zIndex = '9999';
+            document.body.appendChild(backdrop);
+            
+            // Close button handler
+            document.getElementById('close-error-dialog').addEventListener('click', function() {
+                document.body.removeChild(errorDialog);
+                document.body.removeChild(backdrop);
+            });
         });
 }
 
