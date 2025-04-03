@@ -731,7 +731,7 @@ function updateCursorTrailStatus(active, ready = false) {
         } else if (ready) {
             statusEl.textContent = 'READY';
             statusEl.className = 'ms-2 badge bg-warning';
-        } else {
+    } else {
             statusEl.textContent = 'INACTIVE';
             statusEl.className = 'ms-2 badge status-inactive';
         }

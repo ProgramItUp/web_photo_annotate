@@ -27,7 +27,7 @@ The application is organized into multiple files for better maintainability:
 │   └── styles.css       # CSS styles for the application
 ├── js/
 │   ├── app.js           # Main application initialization
-│   ├── canvas.js        # Canvas setup and pan/zoom functionality
+│   ├── canvas.js        # Canvas setup 
 │   ├── config.js        # Configuration constants
 │   ├── drawing-tools.js # Drawing tools (box, circle, arrow, etc.)
 │   ├── image-tools.js   # Image loading and filtering

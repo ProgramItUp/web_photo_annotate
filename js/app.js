@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', function() {
         logMessage('initCursorTrail function not available', 'WARN');
     }
     
+    // Initialize Bootstrap tooltips
+    initializeTooltips();
+    
     // Add event listener specifically for the URL load button as requested
     const loadUrlBtn = document.getElementById('load-url-btn');
     if (loadUrlBtn) {
@@ -436,4 +439,26 @@ function toggleCursorTrail(enable) {
     }
     }
     
+/**
+ * Initialize Bootstrap tooltips
+ */
+function initializeTooltips() {
+    try {
+        // Check if Bootstrap tooltip is available
+        if (typeof bootstrap !== 'undefined' && typeof bootstrap.Tooltip !== 'undefined') {
+            // Initialize all tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            logMessage('Bootstrap tooltips initialized', 'DEBUG');
+        } else {
+            logMessage('Bootstrap Tooltip not available', 'WARN');
+        }
+    } catch (error) {
+        console.error('Error initializing tooltips:', error);
+        logMessage('Failed to initialize tooltips: ' + error.message, 'ERROR');
+    }
+}
+
 console.log('=== app.js: LOADING COMPLETED ==='); 

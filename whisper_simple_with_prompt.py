@@ -1,6 +1,8 @@
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import librosa  # Add librosa for audio loading
+import datetime
+
 
 medical_prompt = """This radiological analysis discusses thoracic imaging findings 
 including pleural effusions, pulmonary nodules, and mediastinal abnormalities."""
@@ -25,12 +27,22 @@ model = AutoModelForSpeechSeq2Seq.from_pretrained(
 )
 model.to(device)
 
-processor = AutoProcessor.from_pretrained("Crystalcareai/Whisper-Medicalv1")
+huggingface_model_name = "Crystalcareai/Whisper-Medicalv1"
+huggingface_model_name = "Na0s/Medical-Whisper-Large-v3"
+# Load model directly
+
+processor = AutoProcessor.from_pretrained(huggingface_model_name)
 
 # Your medical prompt
 radiology_prompt = """The following is a radiology lecture discussing chest radiographs, 
 medical conditions, imaging findings, and patient diagnoses. The speaker uses medical terminology 
 including anatomical structures, pathological conditions, and diagnostic procedures."""
+
+radiology_prompt = """The following is a radiology lecture discussing chest radiographs, 
+medical conditions, imaging findings, and patient diagnoses. The speaker uses medical terminology 
+including anatomical structures, pathological conditions, and diagnostic procedures. 
+Choose the medical term for near homonyms "mediastinum" not "Mediastino", "fainting spells" not "painting spells", and look for words like imaging findings like bilateral infiltrates, pneumothorax, effusion, cardiomegaly, hilar lymphadenopathy,
+pulmonary edema, consolidation, atelectasis, etc."""
 
 # Process audio - first load the audio file using librosa
 print(f"Loading audio file: {mp3_file}")
@@ -76,3 +88,6 @@ full_transcription = asr_pipeline(
 
 print("Full transcription result:")
 print(full_transcription)
+now = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_file_path = "transcription" + huggingface_model_name + now + ".txt"
+save_transcription_to_file(full_transcription, output_file_path)

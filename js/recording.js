@@ -14,6 +14,8 @@ let recordingStartTime = 0;
 let pauseStartTime = 0;
 let pausedTime = 0;
 let audioBlob = null;
+let microphoneInitialized = false;
+let microphoneAccessDenied = false;
 
 // Tracking variable for mouse move throttling
 let lastMouseMoveCapture = 0;
@@ -59,6 +61,75 @@ window.updateCursorTrailPosition = function(x, y) {
         }
     }
 };
+
+/**
+ * Check if microphone permissions are already granted
+ * @returns {Promise<boolean>} Promise that resolves to true if permission is granted
+ */
+function checkMicrophonePermission() {
+    // Check if the Permissions API is available
+    if (navigator.permissions && navigator.permissions.query) {
+        return navigator.permissions.query({ name: 'microphone' })
+            .then(permissionStatus => {
+                if (permissionStatus.state === 'granted') {
+                    logMessage('Microphone permission already granted', 'INFO');
+                    microphoneInitialized = true;
+                    return true;
+                } else if (permissionStatus.state === 'denied') {
+                    logMessage('Microphone permission previously denied', 'WARN');
+                    microphoneAccessDenied = true;
+                    return false;
+                } else {
+                    logMessage('Microphone permission status: ' + permissionStatus.state, 'INFO');
+                    return false;
+                }
+            })
+            .catch(error => {
+                console.error('Error checking permission:', error);
+                return false;
+            });
+    } else {
+        // Permissions API not supported, use feature detection as fallback
+        logMessage('Permissions API not supported, will need to request permissions', 'INFO');
+        return Promise.resolve(false);
+    }
+}
+
+/**
+ * Initialize microphone access at page load to avoid repeated permission prompts
+ */
+function initializeMicrophone() {
+    if (microphoneInitialized || microphoneAccessDenied) return;
+    
+    logMessage('Initializing microphone access...', 'INFO');
+    
+    // First check if permission is already granted
+    checkMicrophonePermission()
+        .then(isGranted => {
+            if (isGranted) {
+                logMessage('Microphone already accessible, no need to request permission', 'INFO');
+                return;
+            }
+            
+            // Request microphone access once at page load
+            return navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(function(stream) {
+                    audioStream = stream;
+                    microphoneInitialized = true;
+                    
+                    // Stop the tracks for now to save resources, but keep the permission
+                    stream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                    
+                    logMessage('Microphone access granted and initialized', 'INFO');
+                })
+                .catch(function(error) {
+                    console.error('Error accessing microphone during initialization:', error);
+                    logMessage('Error initializing microphone: ' + error.message, 'ERROR');
+                    microphoneAccessDenied = true;
+                });
+        });
+}
 
 // Add direct mouse event capture functions
 window.captureMouseDownDirect = function(x, y, button) {
@@ -130,6 +201,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize recording buttons
     initializeRecordingButtons();
+    
+    // Request microphone permissions early
+    initializeMicrophone();
 });
 
 /**
@@ -139,15 +213,19 @@ function initializeRecordingButtons() {
     // Record button
     const recordBtn = document.getElementById('record-btn');
     if (recordBtn) {
+        // Simple click handler for toggleRecording
         recordBtn.addEventListener('click', toggleRecording);
-        logMessage('Record button enabled', 'DEBUG');
-    }
-    
-    // Pause button
-    const pauseBtn = document.getElementById('pause-btn');
-    if (pauseBtn) {
-        pauseBtn.addEventListener('click', pauseResumeRecording);
-        logMessage('Pause button enabled', 'DEBUG');
+        
+        // Double-click to stop recording
+        recordBtn.addEventListener('dblclick', function(e) {
+            if (isRecording) {
+                e.preventDefault();
+                stopAudioRecording();
+                logMessage('Recording stopped via double-click', 'INFO');
+            }
+        });
+        
+        logMessage('Record button enabled with double-click stop', 'DEBUG');
     }
     
     // Save button
@@ -218,16 +296,55 @@ function initializeRecordingButtons() {
 }
 
 /**
- * Toggle recording on/off
+ * Toggle recording on/off/pause/resume with a single button
  */
 function toggleRecording() {
     if (!isRecording) {
         // Start recording
         startAudioRecording();
-    } else {
-        // Stop recording
-        stopAudioRecording();
+    } else if (isRecording && !isPaused) {
+        // Pause recording
+        pauseRecording();
+    } else if (isRecording && isPaused) {
+        // Resume recording
+        resumeRecording();
     }
+}
+
+/**
+ * Pause recording
+ */
+function pauseRecording() {
+    if (!isRecording || !mediaRecorder || isPaused) return;
+    
+    // Pause recording
+    mediaRecorder.pause();
+    isPaused = true;
+    pauseStartTime = Date.now();
+    
+    // Update UI
+    updateRecordingUI(true, true);
+    
+    logMessage('Recording paused', 'INFO');
+}
+
+/**
+ * Resume recording
+ */
+function resumeRecording() {
+    if (!isRecording || !mediaRecorder || !isPaused) return;
+    
+    // Resume recording
+    mediaRecorder.resume();
+    isPaused = false;
+    
+    // Update paused time
+    pausedTime += (Date.now() - pauseStartTime);
+    
+    // Update UI
+    updateRecordingUI(true, false);
+    
+    logMessage('Recording resumed', 'INFO');
 }
 
 /**
@@ -237,6 +354,7 @@ function updateRecordingTimer() {
     if (!isRecording) return;
     
     const recordingTimer = document.getElementById('recording-timer');
+    const totalRecordingTime = document.getElementById('total-recording-time');
     if (!recordingTimer) return;
     
     // Calculate elapsed time accounting for pauses
@@ -253,7 +371,13 @@ function updateRecordingTimer() {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     
+    // Update the real-time recording timer
     recordingTimer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Update the total recording time display (always visible even when not recording)
+    if (totalRecordingTime) {
+        totalRecordingTime.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
 }
 
 /**
@@ -301,12 +425,22 @@ function startAudioRecording() {
     // Check if mediaRecorder is already active
     if (isRecording) return;
     
-    logMessage('Requesting microphone access...', 'INFO');
+    // Check if microphone access was previously denied
+    if (microphoneAccessDenied) {
+        alert('Microphone access was denied. Please reload the page and grant microphone permissions to record audio.');
+        return;
+    }
     
-    // Request microphone access
-    navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(function(stream) {
-        audioStream = stream;
+    logMessage('Starting audio recording...', 'INFO');
+    
+    // First check if we already have permission
+    checkMicrophonePermission()
+        .then(isGranted => {
+            // Request microphone access (will use cached permission if already granted)
+            return navigator.mediaDevices.getUserMedia({ audio: true });
+        })
+        .then(function(stream) {
+            audioStream = stream;
             
             // Create new media recorder from the audio stream
             mediaRecorder = new MediaRecorder(stream);
@@ -323,22 +457,28 @@ function startAudioRecording() {
                 audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 
                 // Update UI
-                updateRecordingUI(false);
+                updateRecordingUI(false, false);
                 
                 logMessage('Recording stopped', 'INFO');
             };
             
             // Clear existing data
-        audioChunks = [];
-        mouseData = [];
-        
+            audioChunks = [];
+            mouseData = [];
+            
+            // Reset total recording time display
+            const totalRecordingTime = document.getElementById('total-recording-time');
+            if (totalRecordingTime) {
+                totalRecordingTime.textContent = '00:00';
+            }
+            
             // Start capturing mouse data
             startCaptureMouseData();
             
             // Start recording
             mediaRecorder.start();
-        isRecording = true;
-        isPaused = false;
+            isRecording = true;
+            isPaused = false;
             
             // Record the start time and reset paused time
             recordingStartTime = Date.now();
@@ -348,20 +488,23 @@ function startAudioRecording() {
             recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
             
             // Update UI
-            updateRecordingUI(true);
+            updateRecordingUI(true, false);
             
             // Start updating volume meter
             startVolumeMeter(stream);
             
-            // Remove laser pointer notification call
-            // showLaserPointerNotification();
-            
             logMessage('Recording started', 'INFO');
-    })
-    .catch(function(error) {
-        console.error('Error accessing microphone:', error);
+        })
+        .catch(function(error) {
+            console.error('Error accessing microphone:', error);
             logMessage('Error accessing microphone: ' + error.message, 'ERROR');
-    });
+            
+            // Update access denied flag
+            microphoneAccessDenied = true;
+            
+            // Show alert to user about microphone access being required
+            alert('Microphone access is required for recording. Please grant microphone permissions and try again.');
+        });
 }
 
 /**
@@ -370,12 +513,15 @@ function startAudioRecording() {
 function stopAudioRecording() {
     if (!isRecording || !mediaRecorder) return;
     
+    // Store the final recording time before stopping
+    const finalRecordingTime = getCurrentRecordingTime();
+    
     // Stop the media recorder
     mediaRecorder.stop();
     
     // Stop all tracks in the stream to release the microphone
-        if (audioStream) {
-            audioStream.getTracks().forEach(track => track.stop());
+    if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
     }
     
     // Clear the timer interval
@@ -390,91 +536,69 @@ function stopAudioRecording() {
     // Stop volume meter
     stopVolumeMeter();
     
+    // Format and display the final recording time
+    const totalSeconds = Math.floor(finalRecordingTime / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    const totalRecordingTime = document.getElementById('total-recording-time');
+    if (totalRecordingTime) {
+        totalRecordingTime.textContent = formattedTime;
+    }
+    
     // Reset state
     isRecording = false;
-        isPaused = false;
+    isPaused = false;
     
-    logMessage('Recording ended', 'INFO');
-}
-
-/**
- * Toggle pause/resume recording
- */
-function pauseResumeRecording() {
-    if (!isRecording || !mediaRecorder) return;
-    
-    if (!isPaused) {
-        // Pause recording
-        mediaRecorder.pause();
-        isPaused = true;
-        pauseStartTime = Date.now();
-        
-        // Update UI
-        updatePauseUI(true);
-        
-        logMessage('Recording paused', 'INFO');
-    } else {
-        // Resume recording
-        mediaRecorder.resume();
-        isPaused = false;
-        
-        // Update paused time
-        pausedTime += (Date.now() - pauseStartTime);
-        
-        // Update UI
-        updatePauseUI(false);
-        
-        logMessage('Recording resumed', 'INFO');
-    }
+    logMessage(`Recording ended with total duration: ${formattedTime}`, 'INFO');
 }
 
 /**
  * Update recording UI elements
  * @param {boolean} isRecording - Whether recording is active
+ * @param {boolean} isPaused - Whether recording is paused (optional, only used if isRecording is true)
  */
-function updateRecordingUI(isRecording) {
+function updateRecordingUI(isRecording, isPaused = false) {
     // Update record button
     const recordBtn = document.getElementById('record-btn');
-    const pauseBtn = document.getElementById('pause-btn');
     const recordingIndicator = document.getElementById('recording-indicator');
     const volumeMeter = document.getElementById('volume-meter');
     
     if (recordBtn) {
-        recordBtn.textContent = isRecording ? 'Stop Recording' : 'Start Recording';
-        recordBtn.classList.toggle('btn-danger', isRecording);
-        recordBtn.classList.toggle('btn-success', !isRecording);
+        // Reset all inline styles (to be clean when switching states)
+        recordBtn.style.backgroundColor = '';
+        recordBtn.style.borderColor = '';
+        recordBtn.style.color = '';
+        
+        if (!isRecording) {
+            // Not recording - show Start Recording
+            recordBtn.textContent = 'Start Recording';
+            recordBtn.classList.remove('btn-danger', 'btn-warning', 'btn-light');
+            recordBtn.classList.add('btn-success');
+        } else if (isRecording && !isPaused) {
+            // Recording - show Pause/Stop Recording
+            recordBtn.textContent = 'Pause/Stop Recording';
+            recordBtn.classList.remove('btn-success', 'btn-warning', 'btn-light');
+            recordBtn.classList.add('btn-danger');
+        } else if (isRecording && isPaused) {
+            // Paused - show Resume Recording with light green color
+            recordBtn.textContent = 'Resume Recording';
+            recordBtn.classList.remove('btn-success', 'btn-danger', 'btn-warning');
+            recordBtn.classList.add('btn-light');
+            recordBtn.style.backgroundColor = '#9fd3a9'; // Light green color
+            recordBtn.style.borderColor = '#6ebb83';     // Slightly darker green for border
+            recordBtn.style.color = '#1e7e34';          // Dark green text for contrast
+        }
     }
     
-    if (pauseBtn) {
-        pauseBtn.disabled = !isRecording;
-        pauseBtn.textContent = 'Pause Recording';
-    }
-        
-        if (recordingIndicator) {
+    if (recordingIndicator) {
         recordingIndicator.style.display = isRecording ? 'inline' : 'none';
+        recordingIndicator.textContent = isPaused ? '❚❚ Paused' : '● Recording';
     }
     
     if (volumeMeter) {
         volumeMeter.style.display = isRecording ? 'block' : 'none';
-    }
-}
-
-/**
- * Update pause UI elements
- * @param {boolean} isPaused - Whether recording is paused
- */
-function updatePauseUI(isPaused) {
-    const pauseBtn = document.getElementById('pause-btn');
-    const recordingIndicator = document.getElementById('recording-indicator');
-    
-    if (pauseBtn) {
-        pauseBtn.textContent = isPaused ? 'Resume Recording' : 'Pause Recording';
-        pauseBtn.classList.toggle('btn-warning', !isPaused);
-        pauseBtn.classList.toggle('btn-info', isPaused);
-    }
-    
-    if (recordingIndicator) {
-        recordingIndicator.textContent = isPaused ? '❚❚ Paused' : '● Recording';
     }
 }
 
