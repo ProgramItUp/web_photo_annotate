@@ -349,16 +349,20 @@ function initializeRecordingButtons() {
         // Simple click handler for toggleRecording
         recordBtn.addEventListener('click', toggleRecording);
         
-        // Double-click to stop recording
-        recordBtn.addEventListener('dblclick', function(e) {
+        logMessage('Record button enabled', 'DEBUG');
+    }
+    
+    // Stop button
+    const stopBtn = document.getElementById('stop-btn');
+    if (stopBtn) {
+        stopBtn.addEventListener('click', function() {
             if (isRecording) {
-                e.preventDefault();
                 stopAudioRecording();
-                logMessage('Recording stopped via double-click', 'INFO');
+                logMessage('Recording stopped via stop button', 'INFO');
             }
         });
         
-        logMessage('Record button enabled with double-click stop', 'DEBUG');
+        logMessage('Stop button enabled', 'DEBUG');
     }
     
     // Save button
@@ -429,7 +433,7 @@ function initializeRecordingButtons() {
 }
 
 /**
- * Toggle recording on/off/pause/resume with a single button
+ * Toggle recording start/pause/resume with the record button
  */
 function toggleRecording() {
     if (!isRecording) {
@@ -918,8 +922,9 @@ function stopAudioRecording() {
  * @param {boolean} isPaused - Whether recording is paused (optional, only used if isRecording is true)
  */
 function updateRecordingUI(isRecording, isPaused = false) {
-    // Update record button
+    // Get UI elements
     const recordBtn = document.getElementById('record-btn');
+    const stopBtn = document.getElementById('stop-btn');
     const recordingIndicator = document.getElementById('recording-indicator');
     const volumeMeter = document.getElementById('volume-meter');
     
@@ -934,19 +939,32 @@ function updateRecordingUI(isRecording, isPaused = false) {
             recordBtn.textContent = 'Start Recording';
             recordBtn.classList.remove('btn-danger', 'btn-warning', 'btn-light');
             recordBtn.classList.add('btn-success');
+            recordBtn.classList.add('flex-grow-1');
+            // Hide stop button when not recording
+            if (stopBtn) {
+                stopBtn.classList.add('d-none');
+            }
         } else if (isRecording && !isPaused) {
-            // Recording - show Pause/Stop Recording
-            recordBtn.textContent = 'Pause/Stop Recording';
-            recordBtn.classList.remove('btn-success', 'btn-warning', 'btn-light');
-            recordBtn.classList.add('btn-danger');
+            // Recording - show Pause button
+            recordBtn.textContent = 'Pause';
+            recordBtn.classList.remove('btn-success', 'btn-light');
+            recordBtn.classList.add('btn-warning');
+            // Show stop button when recording
+            if (stopBtn) {
+                stopBtn.classList.remove('d-none');
+            }
         } else if (isRecording && isPaused) {
             // Paused - show Resume Recording with light green color
-            recordBtn.textContent = 'Resume Recording';
+            recordBtn.textContent = 'Resume';
             recordBtn.classList.remove('btn-success', 'btn-danger', 'btn-warning');
             recordBtn.classList.add('btn-light');
             recordBtn.style.backgroundColor = '#9fd3a9'; // Light green color
             recordBtn.style.borderColor = '#6ebb83';     // Slightly darker green for border
             recordBtn.style.color = '#1e7e34';          // Dark green text for contrast
+            // Keep stop button visible when paused
+            if (stopBtn) {
+                stopBtn.classList.remove('d-none');
+            }
         }
     }
     

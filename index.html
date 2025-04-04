@@ -100,7 +100,10 @@
                 <!-- Audio Recording -->
                 <div class="controls-panel">
                     <h6>Audio Recording</h6>
-                    <button class="btn btn-sm btn-success w-100 mb-2" id="record-btn">Start Recording</button>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-sm btn-success flex-grow-1" id="record-btn">Start Recording</button>
+                        <button class="btn btn-sm btn-danger d-none" id="stop-btn">Stop</button>
+                    </div>
                     <div class="d-flex align-items-center">
                         <span class="recording-indicator" id="recording-indicator">● Recording</span>
                         <span class="ms-auto recording-indicator" id="recording-timer">00:00</span>
