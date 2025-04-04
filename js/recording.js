@@ -1904,8 +1904,8 @@ function replayAnnotation() {
         let animationFrameId = null;
         let audioStartedPlaying = false;
         
-        // Create controls for the replay
-        createReplayControls();
+        // Show the inline pause and stop buttons
+        showReplayControls();
         
         // Log the current cursor size being used for replay
         logMessage(`Replay starting with cursor size: ${window.cursorSize || 20}px`, 'INFO');
@@ -1945,7 +1945,6 @@ function replayAnnotation() {
                     cancelAnimationFrame(animationFrameId);
                 }
                 hideReplayCursor();
-                removeReplayControls();
                 URL.revokeObjectURL(audioURL);
                 
                 // Ensure replay button is reset
@@ -1980,10 +1979,12 @@ function replayAnnotation() {
                 
                 logMessage('Replay paused', 'INFO');
                 
-                // Update control button
-                const pauseButton = document.getElementById('replay-pause-btn');
-                if (pauseButton) {
-                    pauseButton.textContent = 'Resume';
+                // Update pause button
+                const pauseBtn = document.getElementById('replay-pause-btn');
+                if (pauseBtn) {
+                    pauseBtn.textContent = 'Resume';
+                    pauseBtn.classList.remove('btn-warning');
+                    pauseBtn.classList.add('btn-success');
                 }
             }
         };
@@ -2015,10 +2016,12 @@ function replayAnnotation() {
                 
                 logMessage('Replay resumed', 'INFO');
                 
-                // Update control button
-                const pauseButton = document.getElementById('replay-pause-btn');
-                if (pauseButton) {
-                    pauseButton.textContent = 'Pause';
+                // Update pause button
+                const pauseBtn = document.getElementById('replay-pause-btn');
+                if (pauseBtn) {
+                    pauseBtn.textContent = 'Pause';
+                    pauseBtn.classList.remove('btn-success');
+                    pauseBtn.classList.add('btn-warning');
                 }
             }
         };
@@ -2050,7 +2053,6 @@ function replayAnnotation() {
             
             // Hide cursor and cleanup
             hideReplayCursor();
-            removeReplayControls();
             
             logMessage('Replay stopped by user', 'INFO');
             
@@ -2094,7 +2096,6 @@ function replayAnnotation() {
                     if (!audioElement || (audioElement && audioElement.ended)) {
                         isReplaying = false;
                         hideReplayCursor();
-                        removeReplayControls();
                         logMessage('Replay completed', 'INFO');
                         
                         // Reset replay button using the helper function
@@ -2117,12 +2118,12 @@ function replayAnnotation() {
             logMessage('Playing audio only (no mouse data to replay)', 'INFO');
         }
         
-        // Add UI indicator that replay is in progress
+        // Hide main replay button
         const replayBtn = document.getElementById('replay-btn');
         if (replayBtn) {
-            replayBtn.textContent = 'Replaying...';
-            replayBtn.disabled = true;
+            replayBtn.classList.add('d-none');
         }
+        
     } catch (error) {
         console.error('Error replaying annotation:', error);
         logMessage('Error replaying: ' + error.message, 'ERROR');
@@ -2137,74 +2138,82 @@ function replayAnnotation() {
  */
 function resetReplayButton() {
     const replayBtn = document.getElementById('replay-btn');
+    const pauseBtn = document.getElementById('replay-pause-btn');
+    const stopBtn = document.getElementById('replay-stop-btn');
+    
+    // Show the main replay button
     if (replayBtn) {
         replayBtn.textContent = 'Replay Annotation';
         replayBtn.disabled = false;
+        replayBtn.classList.remove('d-none');
         logMessage('Replay button reset to default state', 'DEBUG');
+    }
+    
+    // Hide the pause and stop buttons
+    if (pauseBtn) {
+        pauseBtn.classList.add('d-none');
+        pauseBtn.classList.remove('btn-success');
+        pauseBtn.classList.add('btn-warning');
+        pauseBtn.textContent = 'Pause';
+    }
+    
+    if (stopBtn) {
+        stopBtn.classList.add('d-none');
+    }
+}
+
+/**
+ * Show the inline replay controls
+ */
+function showReplayControls() {
+    const replayBtn = document.getElementById('replay-btn');
+    const pauseBtn = document.getElementById('replay-pause-btn');
+    const stopBtn = document.getElementById('replay-stop-btn');
+    
+    // Hide the main replay button
+    if (replayBtn) {
+        replayBtn.classList.add('d-none');
+    }
+    
+    // Show the pause button, make it wider
+    if (pauseBtn) {
+        pauseBtn.classList.remove('d-none');
+        // Set up the pause button click handler
+        pauseBtn.onclick = function() {
+            if (typeof window.toggleReplayPause === 'function') {
+                window.toggleReplayPause();
+            }
+        };
+    }
+    
+    // Show the stop button
+    if (stopBtn) {
+        stopBtn.classList.remove('d-none');
+        // Set up the stop button click handler
+        stopBtn.onclick = function() {
+            if (typeof window.stopReplay === 'function') {
+                window.stopReplay();
+            }
+        };
     }
 }
 
 /**
  * Create controls for pause/resume/stop during replay
+ * @deprecated Now using inline buttons instead of controls on canvas
  */
 function createReplayControls() {
-    // Remove any existing controls first
-    removeReplayControls();
-    
-    // Create controls container
-    const controlsContainer = document.createElement('div');
-    controlsContainer.id = 'replay-controls';
-    controlsContainer.className = 'replay-controls';
-    controlsContainer.style.position = 'absolute';
-    controlsContainer.style.top = '10px';
-    controlsContainer.style.right = '10px';
-    controlsContainer.style.zIndex = '1100';
-    controlsContainer.style.display = 'flex';
-    controlsContainer.style.gap = '5px';
-    
-    // Create pause/resume button
-    const pauseBtn = document.createElement('button');
-    pauseBtn.id = 'replay-pause-btn';
-    pauseBtn.className = 'btn btn-sm btn-warning';
-    pauseBtn.textContent = 'Pause';
-    pauseBtn.onclick = function() {
-        if (typeof window.toggleReplayPause === 'function') {
-            window.toggleReplayPause();
-        }
-    };
-    
-    // Create stop button
-    const stopBtn = document.createElement('button');
-    stopBtn.id = 'replay-stop-btn';
-    stopBtn.className = 'btn btn-sm btn-danger';
-    stopBtn.textContent = 'Stop';
-    stopBtn.onclick = function() {
-        if (typeof window.stopReplay === 'function') {
-            window.stopReplay();
-        }
-    };
-    
-    // Add buttons to container
-    controlsContainer.appendChild(pauseBtn);
-    controlsContainer.appendChild(stopBtn);
-    
-    // Add container to the canvas container
-    const canvasContainer = document.getElementById('image-container');
-    if (canvasContainer) {
-        canvasContainer.appendChild(controlsContainer);
-    } else {
-        document.body.appendChild(controlsContainer);
-    }
+    // This function is no longer needed as we're using inline buttons
+    logMessage('Using inline replay controls instead of canvas controls', 'DEBUG');
 }
 
 /**
  * Remove replay controls
+ * @deprecated Now using inline buttons instead of controls on canvas
  */
 function removeReplayControls() {
-    const controls = document.getElementById('replay-controls');
-    if (controls && controls.parentNode) {
-        controls.parentNode.removeChild(controls);
-    }
+    // This function is no longer needed as we're using inline buttons
+    logMessage('Using inline replay controls instead of canvas controls', 'DEBUG');
 }
 
 /**

@@ -123,7 +123,11 @@
                     <button class="btn btn-sm btn-primary w-100 mb-2" id="email-btn">Email Annotaion File</button>
                     <button class="btn btn-sm btn-info w-100 mb-2" id="load-btn">Load Recorded File</button>
                     <input type="file" class="form-control d-none" id="load-file" accept=".json">
-                    <button class="btn btn-sm btn-warning w-100" id="replay-btn">Replay Annotation</button>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-sm btn-warning flex-grow-1" id="replay-btn">Replay Annotation</button>
+                        <button class="btn btn-sm btn-warning d-none flex-grow-1" id="replay-pause-btn">Pause</button>
+                        <button class="btn btn-sm btn-danger d-none" id="replay-stop-btn">Stop</button>
+                    </div>
                 </div>
             </div>
             
