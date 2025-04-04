@@ -88,6 +88,62 @@ function encodeJsonInChunks(data) {
 }
 
 /**
+ * Decode base64 encoded annotation data back to JSON object
+ * @param {string} encodedData - The base64 encoded data string
+ * @returns {Object} - The decoded data object
+ */
+function decodeAnnotationData(encodedData) {
+    try {
+        // Decode base64 to string
+        const decodedString = atob(encodedData);
+        
+        // Handle Unicode characters properly
+        const jsonString = decodeURIComponent(escape(decodedString));
+        
+        // Parse JSON
+        return JSON.parse(jsonString);
+    } catch (error) {
+        logMessage(`Error decoding base64 data: ${error.message}`, 'ERROR');
+        
+        // Try alternative decoding for large strings
+        try {
+            return decodeBase64InChunks(encodedData);
+        } catch (chunkError) {
+            logMessage(`Chunked decoding failed: ${chunkError.message}`, 'ERROR');
+            throw error; // Rethrow the original error if all attempts fail
+        }
+    }
+}
+
+/**
+ * Decode large base64 encoded data in chunks to handle memory limitations
+ * @param {string} encodedData - The base64 encoded data string
+ * @returns {Object} - The decoded data object
+ */
+function decodeBase64InChunks(encodedData) {
+    // Process the string in chunks
+    const chunkSize = 1024 * 100; // 100KB chunks
+    let decodedResult = '';
+    
+    for (let i = 0; i < encodedData.length; i += chunkSize) {
+        const chunk = encodedData.substring(i, i + chunkSize);
+        try {
+            const decodedChunk = atob(chunk);
+            decodedResult += decodedChunk;
+        } catch (error) {
+            logMessage(`Error decoding chunk at position ${i}: ${error.message}`, 'ERROR');
+            // Continue with other chunks
+        }
+    }
+    
+    // Handle Unicode characters
+    const jsonString = decodeURIComponent(escape(decodedResult));
+    
+    // Parse JSON
+    return JSON.parse(jsonString);
+}
+
+/**
  * Download a file blob
  * @param {Blob} blob - The blob to download
  * @param {string} filename - The filename to use
@@ -125,6 +181,8 @@ function downloadFile(blob, filename) {
 window.logMessage = logMessage;
 window.encodeAnnotationData = encodeAnnotationData;
 window.encodeJsonInChunks = encodeJsonInChunks;
+window.decodeAnnotationData = decodeAnnotationData;
+window.decodeBase64InChunks = decodeBase64InChunks;
 window.downloadFile = downloadFile;
 window.handleCursorTrailUpdate = handleCursorTrailUpdate;
 window.transformCoordinates = transformCoordinates;

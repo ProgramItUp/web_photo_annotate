@@ -1842,26 +1842,36 @@ function downloadFile(blob, filename) {
 }
 
 /**
- * Load annotation data from a JSON file
+ * Load annotation data from a saved file
+ * Supports both direct JSON files and email text files with embedded annotations
+ * @param {Event} event - The file input change event
  */
 function loadAnnotationData(event) {
     const file = event.target.files[0];
     if (!file) return;
     
     try {
-        // Read the JSON file
+        // Read the file
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
-                const data = JSON.parse(e.target.result);
+                const fileContent = e.target.result;
                 
-                // Store the mouse data
-                mouseData = data.mouseData || [];
+                // Check file extension to determine processing method
+                const fileExt = file.name.split('.').pop().toLowerCase();
                 
-                logMessage('Annotation data loaded', 'INFO');
-            } catch (jsonError) {
-                console.error('Error parsing JSON:', jsonError);
-                logMessage('Error parsing JSON: ' + jsonError.message, 'ERROR');
+                if (fileExt === 'json') {
+                    // Direct JSON file processing
+                    processJsonAnnotationData(fileContent);
+                } else if (fileExt === 'txt') {
+                    // Email text file processing
+                    processEmailAnnotationData(fileContent);
+                } else {
+                    logMessage(`Unsupported file type: ${fileExt}. Please use .json or .txt files.`, 'ERROR');
+                }
+            } catch (parseError) {
+                console.error('Error parsing file:', parseError);
+                logMessage('Error parsing file: ' + parseError.message, 'ERROR');
             }
         };
         
@@ -1874,6 +1884,284 @@ function loadAnnotationData(event) {
         console.error('Error loading annotation data:', error);
         logMessage('Error loading annotation data: ' + error.message, 'ERROR');
     }
+}
+
+/**
+ * Process JSON annotation data loaded directly from a JSON file
+ * @param {string} jsonContent - The JSON file content as string
+ */
+function processJsonAnnotationData(jsonContent) {
+    try {
+        const data = JSON.parse(jsonContent);
+        
+        // Store the mouse data
+        mouseData = data.mouseData || [];
+        
+        // If there's audio data, try to convert it back
+        if (data.audio && data.audio.dataUrl) {
+            try {
+                // Convert data URL back to Blob
+                const audioDataUrl = data.audio.dataUrl;
+                const byteString = atob(audioDataUrl.split(',')[1]);
+                const mimeString = audioDataUrl.split(',')[0].split(':')[1].split(';')[0];
+                const arrayBuffer = new ArrayBuffer(byteString.length);
+                const intArray = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < byteString.length; i++) {
+                    intArray[i] = byteString.charCodeAt(i);
+                }
+                
+                audioBlob = new Blob([arrayBuffer], { type: mimeString });
+                logMessage('Audio data loaded successfully', 'INFO');
+            } catch (audioError) {
+                console.error('Error loading audio data:', audioError);
+                logMessage('Error loading audio data: ' + audioError.message, 'WARN');
+                // Continue without audio
+                audioBlob = null;
+            }
+        }
+        
+        logMessage(`Annotation data loaded from JSON file (${mouseData.length} data points)`, 'INFO');
+        
+        // Store image data for replay
+        window.loadedAnnotationData = data;
+        
+        // Update UI to reflect loaded data
+        updateUIAfterDataLoad(data);
+    } catch (error) {
+        console.error('Error processing JSON data:', error);
+        logMessage('Error processing JSON data: ' + error.message, 'ERROR');
+    }
+}
+
+/**
+ * Process annotation data embedded in an email text file
+ * @param {string} emailContent - The email file content as string
+ */
+function processEmailAnnotationData(emailContent) {
+    try {
+        logMessage('Processing email file for embedded annotation data...', 'INFO');
+        
+        // Look for the annotation markers
+        const startMarker = 'Annotations start here --->';
+        const endMarker = '<--- Annotations end here';
+        
+        let startIndex = emailContent.indexOf(startMarker);
+        if (startIndex === -1) {
+            // Try alternative start marker formats
+            const alternativeStartMarkers = [
+                'Annotations start here ->',
+                'Annotations start here:',
+                'Annotations start here'
+            ];
+            
+            for (const marker of alternativeStartMarkers) {
+                startIndex = emailContent.indexOf(marker);
+                if (startIndex !== -1) {
+                    startIndex += marker.length;
+                    break;
+                }
+            }
+            
+            if (startIndex === -1) {
+                throw new Error('Could not find annotation start marker in the email file');
+            }
+        } else {
+            startIndex += startMarker.length;
+        }
+        
+        let endIndex = emailContent.indexOf(endMarker, startIndex);
+        if (endIndex === -1) {
+            // If no end marker, assume the rest of the file is annotations
+            endIndex = emailContent.length;
+            logMessage('No end marker found, processing to end of file', 'WARN');
+        }
+        
+        // Extract the base64 encoded data
+        const base64Data = emailContent.substring(startIndex, endIndex).trim();
+        
+        if (!base64Data) {
+            throw new Error('No annotation data found between markers');
+        }
+        
+        logMessage(`Found ${base64Data.length} characters of base64 data in email file`, 'INFO');
+        
+        // Decode the base64 data
+        const decodedData = window.decodeAnnotationData(base64Data);
+        
+        // Store the mouse data
+        mouseData = decodedData.mouseData || [];
+        
+        // If there's audio data, try to convert it back
+        if (decodedData.audio && decodedData.audio.dataUrl) {
+            try {
+                // Convert data URL back to Blob
+                const audioDataUrl = decodedData.audio.dataUrl;
+                const byteString = atob(audioDataUrl.split(',')[1]);
+                const mimeString = audioDataUrl.split(',')[0].split(':')[1].split(';')[0];
+                const arrayBuffer = new ArrayBuffer(byteString.length);
+                const intArray = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < byteString.length; i++) {
+                    intArray[i] = byteString.charCodeAt(i);
+                }
+                
+                audioBlob = new Blob([arrayBuffer], { type: mimeString });
+                logMessage('Audio data loaded successfully from email file', 'INFO');
+            } catch (audioError) {
+                console.error('Error loading audio data from email:', audioError);
+                logMessage('Error loading audio data from email: ' + audioError.message, 'WARN');
+                // Continue without audio
+                audioBlob = null;
+            }
+        }
+        
+        logMessage(`Annotation data loaded from email file (${mouseData.length} data points)`, 'INFO');
+        
+        // Store image data for replay
+        window.loadedAnnotationData = decodedData;
+        
+        // Update UI to reflect loaded data
+        updateUIAfterDataLoad(decodedData);
+    } catch (error) {
+        console.error('Error processing email data:', error);
+        logMessage('Error processing email data: ' + error.message, 'ERROR');
+    }
+}
+
+/**
+ * Update UI elements after loading annotation data
+ * @param {Object} data - The loaded annotation data
+ */
+function updateUIAfterDataLoad(data) {
+    // Load the image if available
+    if (data.image && data.image.dataUrl) {
+        loadImageFromDataUrl(data.image.dataUrl);
+    }
+    
+    // Update the total recording time if available
+    if (data.audio && data.audio.duration) {
+        const totalSeconds = Math.floor(data.audio.duration / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        const totalRecordingTime = document.getElementById('total-recording-time');
+        if (totalRecordingTime) {
+            totalRecordingTime.textContent = formattedTime;
+        }
+    }
+    
+    // Enable replay button if we have data
+    const replayBtn = document.getElementById('replay-btn');
+    if (replayBtn && (mouseData.length > 0 || audioBlob)) {
+        replayBtn.disabled = false;
+    }
+    
+    // Show success notification
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-success p-2';
+    notification.innerHTML = `<strong>Success!</strong> Annotation data loaded with ${mouseData.length} data points.`;
+    notification.style.position = 'fixed';
+    notification.style.top = '10%';
+    notification.style.left = '50%';
+    notification.style.transform = 'translateX(-50%)';
+    notification.style.zIndex = '9999';
+    notification.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
+}
+
+/**
+ * Load image from data URL
+ * @param {string} dataUrl - The data URL of the image to load
+ */
+function loadImageFromDataUrl(dataUrl) {
+    logMessage(`Loading image from data URL: ${dataUrl.substring(0, 50)}...`, 'DEBUG');
+    
+    if (typeof fabric === 'undefined' || typeof fabric.Image === 'undefined') {
+        logMessage('Error: Fabric.js library not loaded', 'ERROR');
+        return;
+    }
+    
+    if (typeof window.canvas === 'undefined') {
+        logMessage('Error: Canvas not initialized', 'ERROR');
+        return;
+    }
+    
+    // Show loading indicator
+    logMessage('Loading image from data URL, please wait...', 'INFO');
+    
+    fabric.Image.fromURL(dataUrl, function(img) {
+        try {
+            if (!img) {
+                logMessage('Failed to load image from data URL', 'ERROR');
+                return;
+            }
+            
+            // Clear the canvas
+            window.canvas.clear();
+            
+            // Add the image to the canvas without scaling - the resizeCanvas function will handle this
+            img.set({
+                left: 0,
+                top: 0,
+                originX: 'left',
+                originY: 'top'
+            });
+            
+            window.canvas.add(img);
+            
+            // Store the original image for potential reset
+            window.canvas.setBackgroundImage(img, window.canvas.renderAll.bind(window.canvas));
+            
+            // Resize the canvas to match the image aspect ratio
+            if (typeof window.resizeCanvas === 'function') {
+                window.resizeCanvas();
+            } else {
+                logMessage('resizeCanvas function not available', 'ERROR');
+                
+                // Fallback resize if window.resizeCanvas is not available
+                const containerWidth = document.getElementById('image-container').offsetWidth;
+                const aspectRatio = img.height / img.width;
+                const newHeight = containerWidth * aspectRatio;
+                
+                // Update canvas dimensions
+                window.canvas.setWidth(containerWidth);
+                window.canvas.setHeight(newHeight);
+                
+                // Scale image to fit canvas
+                const scale = containerWidth / img.width;
+                img.scale(scale);
+                
+                // Update container height
+                document.getElementById('image-container').style.height = `${newHeight}px`;
+            }
+            
+            // Reset image adjustments
+            const brightnessSlider = document.getElementById('brightness');
+            const contrastSlider = document.getElementById('contrast');
+            if (brightnessSlider) brightnessSlider.value = 0;
+            if (contrastSlider) contrastSlider.value = 0;
+            
+            logMessage(`Image loaded successfully from data URL: ${img.width}x${img.height} pixels`, 'INFO');
+        } catch (error) {
+            console.error('Error loading image from data URL:', error);
+            logMessage('Error loading image from data URL: ' + error.message, 'ERROR');
+        }
+    }, { 
+        crossOrigin: 'Anonymous',
+        // Add error handling for image loading
+        onerror: function() {
+            logMessage(`Failed to load image from data URL`, 'ERROR');
+        }
+    });
 }
 
 /**
@@ -1891,6 +2179,39 @@ function replayAnnotation() {
         
         logMessage('Starting replay of annotation data', 'INFO');
         
+        // Make sure we're displaying the correct image
+        if (window.loadedAnnotationData && window.loadedAnnotationData.image && window.loadedAnnotationData.image.dataUrl) {
+            // Check if the image is already loaded on the canvas or needs to be reloaded
+            const canvasObjects = window.canvas.getObjects();
+            const hasImage = canvasObjects.some(obj => obj.type === 'image');
+            
+            if (!hasImage) {
+                logMessage('Loading image for replay...', 'INFO');
+                loadImageFromDataUrl(window.loadedAnnotationData.image.dataUrl);
+                
+                // Give a small delay to ensure image is loaded before starting replay
+                setTimeout(() => {
+                    continueReplay();
+                }, 500);
+                return;
+            }
+        }
+        
+        // If no image needed or image already loaded, continue with replay
+        continueReplay();
+        
+    } catch (error) {
+        console.error('Error replaying annotation:', error);
+        logMessage('Error replaying: ' + error.message, 'ERROR');
+        
+        // Make sure the button is reset even if an error occurs
+        resetReplayButton();
+    }
+    
+    /**
+     * Continue with replay after image is loaded
+     */
+    function continueReplay() {
         // Create a replay cursor if it doesn't exist
         createReplayCursor();
         
@@ -1963,8 +2284,8 @@ function replayAnnotation() {
         // Function to pause the replay
         window.pauseReplay = function() {
             if (!isPaused && isReplaying) {
-                isPaused = true;
-                pauseStartTime = Date.now();
+        isPaused = true;
+        pauseStartTime = Date.now();
                 
                 // Pause audio if it exists
                 if (audioElement) {
@@ -1993,7 +2314,7 @@ function replayAnnotation() {
         window.resumeReplay = function() {
             if (isPaused && isReplaying) {
                 // Calculate how long we were paused
-                const pauseDuration = Date.now() - pauseStartTime;
+        const pauseDuration = Date.now() - pauseStartTime;
                 totalPausedTime += pauseDuration;
                 
                 // Adjust start time to account for pause duration
@@ -2010,8 +2331,8 @@ function replayAnnotation() {
                 if (!animationFrameId && currentDataIndex < sortedMouseData.length) {
                     animationFrameId = requestAnimationFrame(updateCursorPosition);
                 }
-                
-                isPaused = false;
+        
+        isPaused = false;
                 pauseStartTime = 0;
                 
                 logMessage('Replay resumed', 'INFO');
@@ -2123,13 +2444,6 @@ function replayAnnotation() {
         if (replayBtn) {
             replayBtn.classList.add('d-none');
         }
-        
-    } catch (error) {
-        console.error('Error replaying annotation:', error);
-        logMessage('Error replaying: ' + error.message, 'ERROR');
-        
-        // Make sure the button is reset even if an error occurs
-        resetReplayButton();
     }
 }
 
@@ -2154,7 +2468,7 @@ function resetReplayButton() {
         pauseBtn.classList.add('d-none');
         pauseBtn.classList.remove('btn-success');
         pauseBtn.classList.add('btn-warning');
-        pauseBtn.textContent = 'Pause';
+    pauseBtn.textContent = 'Pause';
     }
     
     if (stopBtn) {
@@ -2179,22 +2493,22 @@ function showReplayControls() {
     if (pauseBtn) {
         pauseBtn.classList.remove('d-none');
         // Set up the pause button click handler
-        pauseBtn.onclick = function() {
-            if (typeof window.toggleReplayPause === 'function') {
-                window.toggleReplayPause();
-            }
-        };
+    pauseBtn.onclick = function() {
+        if (typeof window.toggleReplayPause === 'function') {
+            window.toggleReplayPause();
+        }
+    };
     }
     
     // Show the stop button
     if (stopBtn) {
         stopBtn.classList.remove('d-none');
         // Set up the stop button click handler
-        stopBtn.onclick = function() {
-            if (typeof window.stopReplay === 'function') {
-                window.stopReplay();
-            }
-        };
+    stopBtn.onclick = function() {
+        if (typeof window.stopReplay === 'function') {
+            window.stopReplay();
+        }
+    };
     }
 }
 
