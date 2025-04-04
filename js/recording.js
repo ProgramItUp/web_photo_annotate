@@ -115,28 +115,56 @@ function initializeMicrophone() {
     
     logMessage('Initializing microphone access...', 'INFO');
     
+    // Detect if we're running from file:// protocol
+    const isFileProtocol = window.location.protocol === 'file:';
+    
     // Check if site is served over HTTPS, which is required for persistent permissions
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-        logMessage('Warning: Microphone permissions can only be persistent on HTTPS sites', 'WARN');
-        // We'll still check, but show a warning to the user
-        const httpsWarning = document.createElement('div');
-        httpsWarning.className = 'alert alert-warning p-1 m-2 small';
-        httpsWarning.innerHTML = 'This site is not running on HTTPS. Microphone permissions will be requested each time.';
-        httpsWarning.style.position = 'fixed';
-        httpsWarning.style.top = '0';
-        httpsWarning.style.right = '0';
-        httpsWarning.style.zIndex = '9999';
-        document.body.appendChild(httpsWarning);
-        
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            if (httpsWarning.parentNode) {
-                httpsWarning.parentNode.removeChild(httpsWarning);
+        if (isFileProtocol) {
+            logMessage('File protocol detected. Microphone permissions cannot be persisted.', 'WARN');
+            
+            // For file:// protocol, just set a flag to indicate we'll need to request permission each time
+            // But don't show any prompts since they won't help
+            window.isFileProtocol = true;
+            
+            // Add a small unobtrusive indicator in the recording button area
+            const recordingIndicator = document.getElementById('recording-indicator');
+            if (recordingIndicator) {
+                const fileProtocolNote = document.createElement('div');
+                fileProtocolNote.className = 'small text-muted mb-2';
+                fileProtocolNote.innerText = 'File:// mode - Permission required each time';
+                fileProtocolNote.style.fontSize = '10px';
+                recordingIndicator.parentNode.insertBefore(fileProtocolNote, recordingIndicator);
             }
-        }, 5000);
+            
+            return; // Don't attempt to initialize microphone early for file:// protocol
+        } else {
+            logMessage('Warning: Microphone permissions can only be persistent on HTTPS sites', 'WARN');
+            // We'll still check, but show a warning to the user
+            const httpsWarning = document.createElement('div');
+            httpsWarning.className = 'alert alert-warning p-1 m-2 small';
+            httpsWarning.innerHTML = 'This site is not running on HTTPS. Microphone permissions will be requested each time.';
+            httpsWarning.style.position = 'fixed';
+            httpsWarning.style.top = '0';
+            httpsWarning.style.right = '0';
+            httpsWarning.style.zIndex = '9999';
+            document.body.appendChild(httpsWarning);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (httpsWarning.parentNode) {
+                    httpsWarning.parentNode.removeChild(httpsWarning);
+                }
+            }, 5000);
+        }
     }
     
-    // First check if permission is already granted
+    // If using file:// protocol, don't check for existing permissions as it will always fail
+    if (isFileProtocol) {
+        return;
+    }
+    
+    // First check if permission is already granted - only do this for http/https
     checkMicrophonePermission()
         .then(isGranted => {
             if (isGranted) {
@@ -144,7 +172,7 @@ function initializeMicrophone() {
                 return;
             }
             
-            // Add a prompt to inform users about microphone usage
+            // Add a prompt to inform users about microphone usage - only for http/https
             const micPermissionInfo = document.createElement('div');
             micPermissionInfo.className = 'alert alert-info p-2 m-2';
             micPermissionInfo.innerHTML = 
@@ -164,15 +192,15 @@ function initializeMicrophone() {
             document.getElementById('initialize-mic-btn').addEventListener('click', function() {
                 // Request microphone access when user clicks the button
                 navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(function(stream) {
-                        audioStream = stream;
-                        microphoneInitialized = true;
-                        
-                        // Stop the tracks for now to save resources, but keep the permission
-                        stream.getTracks().forEach(track => track.stop());
-                        audioStream = null;
-                        
-                        logMessage('Microphone access granted and initialized', 'INFO');
+                .then(function(stream) {
+                    audioStream = stream;
+                    microphoneInitialized = true;
+                    
+                    // Stop the tracks for now to save resources, but keep the permission
+                    stream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                    
+                    logMessage('Microphone access granted and initialized', 'INFO');
                         
                         // Remove the prompt
                         if (micPermissionInfo.parentNode) {
@@ -196,11 +224,11 @@ function initializeMicrophone() {
                                 successMsg.parentNode.removeChild(successMsg);
                             }
                         }, 3000);
-                    })
-                    .catch(function(error) {
-                        console.error('Error accessing microphone during initialization:', error);
-                        logMessage('Error initializing microphone: ' + error.message, 'ERROR');
-                        microphoneAccessDenied = true;
+                })
+                .catch(function(error) {
+                    console.error('Error accessing microphone during initialization:', error);
+                    logMessage('Error initializing microphone: ' + error.message, 'ERROR');
+                    microphoneAccessDenied = true;
                         
                         // Remove the prompt
                         if (micPermissionInfo.parentNode) {
@@ -232,7 +260,7 @@ function initializeMicrophone() {
                 if (micPermissionInfo.parentNode) {
                     micPermissionInfo.parentNode.removeChild(micPermissionInfo);
                 }
-            });
+                });
         });
 }
 
@@ -530,7 +558,107 @@ function startAudioRecording() {
     // Check if mediaRecorder is already active
     if (isRecording) return;
     
-    // Check if microphone access was previously denied
+    // Check if we're running from file:// protocol
+    const isFileProtocol = window.location.protocol === 'file:' || window.isFileProtocol === true;
+    
+    // For file:// protocol, we skip the permission check and go straight to requesting access
+    // since permissions can't be persisted anyway
+    if (isFileProtocol) {
+        logMessage('File protocol detected. Requesting microphone access directly.', 'INFO');
+        
+        // Show a simplified loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'alert alert-info p-2';
+        loadingIndicator.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div> Requesting microphone access...';
+        loadingIndicator.style.position = 'fixed';
+        loadingIndicator.style.top = '10px';
+        loadingIndicator.style.right = '10px';
+        loadingIndicator.style.zIndex = '9999';
+        document.body.appendChild(loadingIndicator);
+        
+        // Request access directly
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) {
+                // Remove the loading indicator
+                if (loadingIndicator.parentNode) {
+                    loadingIndicator.parentNode.removeChild(loadingIndicator);
+                }
+                
+                audioStream = stream;
+                
+                // Create new media recorder from the audio stream
+                mediaRecorder = new MediaRecorder(stream);
+                
+                // Set up event handlers for the media recorder
+                mediaRecorder.ondataavailable = function(event) {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = function() {
+                    // Combine recorded audio chunks into a single blob
+                    audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    
+                    // Update UI
+                    updateRecordingUI(false, false);
+                    
+                    logMessage('Recording stopped', 'INFO');
+                };
+                
+                // Clear existing data
+                audioChunks = [];
+                mouseData = [];
+                
+                // Reset total recording time display
+                const totalRecordingTime = document.getElementById('total-recording-time');
+                if (totalRecordingTime) {
+                    totalRecordingTime.textContent = '00:00';
+                }
+                
+                // Start capturing mouse data
+                startCaptureMouseData();
+                
+                // Start recording
+                mediaRecorder.start();
+                isRecording = true;
+                isPaused = false;
+                
+                // Record the start time and reset paused time
+                recordingStartTime = Date.now();
+                pausedTime = 0;
+                
+                // Start timer updates
+                recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+                
+                // Update UI
+                updateRecordingUI(true, false);
+                
+                // Start updating volume meter
+                startVolumeMeter(stream);
+                
+                logMessage('Recording started', 'INFO');
+            })
+            .catch(function(error) {
+                console.error('Error accessing microphone:', error);
+                logMessage('Error accessing microphone: ' + error.message, 'ERROR');
+                
+                // Remove the loading indicator
+                if (loadingIndicator.parentNode) {
+                    loadingIndicator.parentNode.removeChild(loadingIndicator);
+                }
+                
+                // Update access denied flag
+                microphoneAccessDenied = true;
+                
+                // Show simplified error for file:// protocol
+                alert('Microphone access was denied. You need to grant microphone permission each time when using file:// protocol.');
+            });
+        
+        return;
+    }
+    
+    // Check if microphone access was previously denied - only matters for http/https
     if (microphoneAccessDenied) {
         // Create a more helpful dialog with options to retry
         const deniedDialog = document.createElement('div');
@@ -1801,6 +1929,9 @@ function replayAnnotation() {
                 hideReplayCursor();
                 removeReplayControls();
                 URL.revokeObjectURL(audioURL);
+                
+                // Ensure replay button is reset
+                resetReplayButton();
             };
             
             // Play the audio
@@ -1815,8 +1946,8 @@ function replayAnnotation() {
         // Function to pause the replay
         window.pauseReplay = function() {
             if (!isPaused && isReplaying) {
-        isPaused = true;
-        pauseStartTime = Date.now();
+                isPaused = true;
+                pauseStartTime = Date.now();
                 
                 // Pause audio if it exists
                 if (audioElement) {
@@ -1843,7 +1974,7 @@ function replayAnnotation() {
         window.resumeReplay = function() {
             if (isPaused && isReplaying) {
                 // Calculate how long we were paused
-        const pauseDuration = Date.now() - pauseStartTime;
+                const pauseDuration = Date.now() - pauseStartTime;
                 totalPausedTime += pauseDuration;
                 
                 // Adjust start time to account for pause duration
@@ -1860,8 +1991,8 @@ function replayAnnotation() {
                 if (!animationFrameId && currentDataIndex < sortedMouseData.length) {
                     animationFrameId = requestAnimationFrame(updateCursorPosition);
                 }
-        
-        isPaused = false;
+                
+                isPaused = false;
                 pauseStartTime = 0;
                 
                 logMessage('Replay resumed', 'INFO');
@@ -1905,12 +2036,8 @@ function replayAnnotation() {
             
             logMessage('Replay stopped by user', 'INFO');
             
-            // Reset replay button
-            const replayBtn = document.getElementById('replay-btn');
-            if (replayBtn) {
-                replayBtn.textContent = 'Replay Recording';
-                replayBtn.disabled = false;
-            }
+            // Reset replay button using the helper function
+            resetReplayButton();
         };
         
         // If we have mouse data, animate it
@@ -1952,12 +2079,8 @@ function replayAnnotation() {
                         removeReplayControls();
                         logMessage('Replay completed', 'INFO');
                         
-                        // Reset replay button
-                        const replayBtn = document.getElementById('replay-btn');
-                        if (replayBtn) {
-                            replayBtn.textContent = 'Replay Recording';
-                            replayBtn.disabled = false;
-                        }
+                        // Reset replay button using the helper function
+                        resetReplayButton();
                         
                         return;
                     }
@@ -1982,9 +2105,24 @@ function replayAnnotation() {
             replayBtn.textContent = 'Replaying...';
             replayBtn.disabled = true;
         }
-            } catch (error) {
+    } catch (error) {
         console.error('Error replaying annotation:', error);
         logMessage('Error replaying: ' + error.message, 'ERROR');
+        
+        // Make sure the button is reset even if an error occurs
+        resetReplayButton();
+    }
+}
+
+/**
+ * Helper function to reset the replay button state
+ */
+function resetReplayButton() {
+    const replayBtn = document.getElementById('replay-btn');
+    if (replayBtn) {
+        replayBtn.textContent = 'Replay Annotation';
+        replayBtn.disabled = false;
+        logMessage('Replay button reset to default state', 'DEBUG');
     }
 }
 
