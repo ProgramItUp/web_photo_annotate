@@ -170,6 +170,98 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         logMessage('Could not find cursor trail toggle', 'ERROR');
     }
+    
+    // Add event listener for the Laser Pointer button
+    const laserPointerButton = document.getElementById('tool-laser');
+    if (laserPointerButton) {
+        laserPointerButton.addEventListener('click', function() {
+            logMessage('Laser Pointer tool selected', 'INFO');
+            
+            // Deactivate bounding box if it's active
+            if (window.DrawingTools && typeof window.DrawingTools.deactivateBoundingBox === 'function') {
+                window.DrawingTools.deactivateBoundingBox();
+            }
+            
+            // Note: We DON'T remove the existing bounding box when switching tools,
+            // allowing it to remain visible but no longer editable
+            
+            // Show laser pointer notification
+            if (window.DrawingTools && typeof window.DrawingTools.showLaserPointerNotification === 'function') {
+                window.DrawingTools.showLaserPointerNotification();
+            }
+            
+            // Update UI to show selected tool
+            const allToolButtons = document.querySelectorAll('.btn-group-vertical .btn');
+            allToolButtons.forEach(button => {
+                button.classList.remove('active');
+                button.classList.remove('btn-primary');
+                button.classList.add('btn-outline-primary');
+            });
+            
+            // Highlight this button
+            laserPointerButton.classList.add('active');
+            laserPointerButton.classList.remove('btn-outline-primary');
+            laserPointerButton.classList.add('btn-primary');
+        });
+        
+        logMessage('Laser Pointer button enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find Laser Pointer button', 'WARN');
+    }
+    
+    // Add event listeners for the Pointer and Draw mode buttons
+    const pointerButton = document.getElementById('mode-pointer');
+    const cornersButton = document.getElementById('mode-corners');
+    
+    if (pointerButton && cornersButton) {
+        // Pointer mode button
+        pointerButton.addEventListener('click', function() {
+            if (window.DrawingTools && typeof window.DrawingTools.setBoundingBoxMode === 'function') {
+                window.DrawingTools.setBoundingBoxMode('pointer');
+                
+                // Update UI
+                pointerButton.classList.remove('btn-outline-primary');
+                pointerButton.classList.add('btn-primary');
+                cornersButton.classList.remove('btn-primary');
+                cornersButton.classList.add('btn-outline-primary');
+                
+                // Show notification if bounding box mode is active
+                if (window.DrawingTools && typeof window.DrawingTools.showBoundingBoxNotification === 'function') {
+                    window.DrawingTools.showBoundingBoxNotification();
+                }
+                
+                logMessage('Pointer mode activated for bounding box', 'INFO');
+            } else {
+                logMessage('Pointer mode function not available', 'ERROR');
+            }
+        });
+        
+        // Draw mode button
+        cornersButton.addEventListener('click', function() {
+            if (window.DrawingTools && typeof window.DrawingTools.setBoundingBoxMode === 'function') {
+                window.DrawingTools.setBoundingBoxMode('corners');
+                
+                // Update UI
+                cornersButton.classList.remove('btn-outline-primary');
+                cornersButton.classList.add('btn-primary');
+                pointerButton.classList.remove('btn-primary');
+                pointerButton.classList.add('btn-outline-primary');
+                
+                // Show notification if bounding box mode is active
+                if (window.DrawingTools && typeof window.DrawingTools.showBoundingBoxNotification === 'function') {
+                    window.DrawingTools.showBoundingBoxNotification();
+                }
+                
+                logMessage('Corners mode activated for bounding box', 'INFO');
+            } else {
+                logMessage('Corners mode function not available', 'ERROR');
+            }
+        });
+        
+        logMessage('Pointer and Draw mode buttons enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find Pointer or Draw mode buttons', 'WARN');
+    }
 });
 
 /**
@@ -247,6 +339,24 @@ function setupEventListeners() {
                 boundingBoxButton.classList.add('active');
                 boundingBoxButton.classList.remove('btn-outline-primary');
                 boundingBoxButton.classList.add('btn-primary');
+                
+                // Ensure the Draw mode button is active by default
+                const cornersButton = document.getElementById('mode-corners');
+                const pointerButton = document.getElementById('mode-pointer');
+                if (cornersButton && pointerButton) {
+                    // Set mode to 'corners' explicitly
+                    if (typeof window.DrawingTools.setBoundingBoxMode === 'function') {
+                        window.DrawingTools.setBoundingBoxMode('corners');
+                    }
+                    
+                    // Update UI for mode buttons
+                    cornersButton.classList.remove('btn-outline-primary');
+                    cornersButton.classList.add('btn-primary');
+                    pointerButton.classList.remove('btn-primary');
+                    pointerButton.classList.add('btn-outline-primary');
+                    
+                    logMessage('Corners mode activated by default for bounding box', 'DEBUG');
+                }
             } else {
                 logMessage('Bounding Box functionality not available', 'ERROR');
             }
@@ -267,6 +377,9 @@ function setupEventListeners() {
             if (window.DrawingTools && typeof window.DrawingTools.deactivateBoundingBox === 'function') {
                 window.DrawingTools.deactivateBoundingBox();
             }
+            
+            // Note: We DON'T remove the existing bounding box when switching tools,
+            // allowing it to remain visible but no longer editable
             
             // Show laser pointer notification
             if (window.DrawingTools && typeof window.DrawingTools.showLaserPointerNotification === 'function') {
@@ -411,7 +524,7 @@ function loadImageFromUrl(url) {
             // Resize the canvas to match the image aspect ratio
             if (typeof window.resizeCanvas === 'function') {
                 window.resizeCanvas();
-    } else {
+            } else {
                 logMessage('resizeCanvas function not available', 'ERROR');
             }
             
@@ -420,7 +533,7 @@ function loadImageFromUrl(url) {
             document.getElementById('contrast').value = 0;
             
             logMessage(`Image loaded successfully: ${img.width}x${img.height} pixels`, 'INFO');
-            } catch (error) {
+        } catch (error) {
             console.error('Error loading image:', error);
             logMessage('Error loading image: ' + error.message, 'ERROR');
         }
@@ -531,7 +644,7 @@ function updateImageFilters() {
         window.canvas.renderAll();
         
         logMessage('Image filters updated');
-                } catch (error) {
+    } catch (error) {
         console.error('Error applying image filters:', error);
         logMessage('Error applying image filters: ' + error.message, 'ERROR');
     }
@@ -587,8 +700,8 @@ function toggleCursorTrail(enable) {
     } else {
         logMessage('setCursorTrailEnabled function not available', 'ERROR');
     }
-    }
-    
+}
+
 /**
  * Initialize Bootstrap tooltips
  */

@@ -6,6 +6,13 @@
 // State for laser pointer trail
 let currentLaserTrail = null;
 
+// State variables
+let boundingBoxActive = false;
+let currentBoundingBox = null;
+let boundingBoxStartPoint = null;
+let activeBoundingBox = null; // Track the active (completed) bounding box
+let boundingbox_mode = 'corners'; // Use a single variable for mode: 'corners' or 'pointer'
+
 /**
  * Show laser pointer usage notification
  */
@@ -388,13 +395,22 @@ function updateCoordinatesDisplay(x, y) {
     }
 }
 
-// Bounding Box functionality
 /**
- * Create and manage a resizable bounding box
+ * Set the bounding box mode (pointer or draw)
+ * @param {string} mode - The mode to set ('pointer' or 'draw')
  */
-let boundingBoxActive = false;
-let currentBoundingBox = null;
-let boundingBoxStartPoint = null;
+function setBoundingBoxMode(mode) {
+    if (mode === 'pointer' || mode === 'corners') {
+        boundingbox_mode = mode;
+        if (typeof logMessage === 'function') {
+            logMessage(`Bounding box ${mode} mode activated`, 'INFO');
+        }
+    } else {
+        if (typeof logMessage === 'function') {
+            logMessage(`Invalid boundingbox_mode: ${mode}`, 'ERROR');
+        }
+    }
+}
 
 /**
  * Initialize the bounding box functionality
@@ -440,8 +456,26 @@ function deactivateBoundingBox() {
         window.canvas.off('mouse:up', handleBoundingBoxMouseUp);
     }
     
+    // Clear references but don't remove existing box
+    currentBoundingBox = null;
+    boundingBoxStartPoint = null;
+    
     if (typeof logMessage === 'function') {
         logMessage('Bounding box mode deactivated', 'INFO');
+    }
+}
+
+/**
+ * Remove any existing bounding box from the canvas
+ */
+function removeExistingBoundingBox() {
+    if (activeBoundingBox && window.canvas) {
+        if (typeof logMessage === 'function') {
+            logMessage('Removing existing bounding box', 'DEBUG');
+        }
+        
+        window.canvas.remove(activeBoundingBox);
+        activeBoundingBox = null;
     }
 }
 
@@ -457,8 +491,10 @@ function showBoundingBoxNotification() {
     notification.innerHTML = `
         <div class="text-center">
             <h5>Bounding Box Mode Active</h5>
-            <p>Click and drag on the image to create a bounding box.</p>
-            <p>Use the handles to resize the box after creation.</p>
+            <p>Current mode: <strong>${boundingbox_mode === 'corners' ? 'Corners' : 'Pointer'}</strong></p>
+            <p>${boundingbox_mode === 'corners' ? 
+                'Click and drag on the image to create a bounding box. Only one bounding box can exist at a time.' : 
+                'Click on the bounding box to select it. Use pointer mode to interact with the box.'}</p>
             <button class="btn btn-sm btn-primary" id="close-bounding-box-notification">Got it!</button>
         </div>
     `;
@@ -494,6 +530,21 @@ function handleBoundingBoxMouseDown(event) {
     
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
+    
+    // In pointer mode, just check if we clicked on the active bounding box
+    if (boundingbox_mode === 'pointer') {
+        // We'll implement pointer mode functionality later
+        if (typeof logMessage === 'function') {
+            logMessage(`Pointer mode: Click at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+        }
+        return;
+    }
+    
+    // Only proceed with drawing in draw mode
+    if (boundingbox_mode !== 'corners') return;
+    
+    // Remove any existing bounding box before creating a new one
+    removeExistingBoundingBox();
     
     // Store the starting point
     boundingBoxStartPoint = {
@@ -544,7 +595,16 @@ function handleBoundingBoxMouseDown(event) {
  * @param {Event} event - Fabric.js mouse event
  */
 function handleBoundingBoxMouseMove(event) {
-    if (!boundingBoxActive || !currentBoundingBox || !boundingBoxStartPoint) return;
+    if (!boundingBoxActive) return;
+    
+    // In pointer mode, just handle moving the cursor
+    if (boundingbox_mode === 'pointer') {
+        // Pointer mode functionality will be implemented later
+        return;
+    }
+    
+    // Only proceed with drawing in draw mode
+    if (boundingbox_mode !== 'corners' || !currentBoundingBox || !boundingBoxStartPoint) return;
     
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
@@ -608,14 +668,22 @@ function handleBoundingBoxMouseUp(event) {
         if (typeof logMessage === 'function') {
             logMessage('Bounding box too small, removed', 'DEBUG');
         }
+        
+        // Reset tracking variables
+        currentBoundingBox = null;
+        boundingBoxStartPoint = null;
+        activeBoundingBox = null; // No active box
     } else {
+        // Set the current box as the active bounding box
+        activeBoundingBox = currentBoundingBox;
+        
         // Set the box as the active object so it can be immediately resized
         window.canvas.setActiveObject(currentBoundingBox);
+        
+        // Reset drawing state
+        currentBoundingBox = null;
+        boundingBoxStartPoint = null;
     }
-    
-    // Reset tracking variables
-    currentBoundingBox = null;
-    boundingBoxStartPoint = null;
     
     // Capture the event for recording if recording is active
     if (typeof window.captureMouseUpDirect === 'function') {
@@ -768,5 +836,8 @@ window.DrawingTools = {
     updateCoordinatesDisplay,
     // Add the new bounding box functions to the export
     initBoundingBox,
-    deactivateBoundingBox
+    deactivateBoundingBox,
+    removeExistingBoundingBox,
+    setBoundingBoxMode,
+    showBoundingBoxNotification
 }; 
