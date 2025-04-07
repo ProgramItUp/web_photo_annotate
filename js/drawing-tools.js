@@ -12,6 +12,8 @@ let currentBoundingBox = null;
 let boundingBoxStartPoint = null;
 let activeBoundingBox = null; // Track the active (completed) bounding box
 let boundingbox_mode = 'corners'; // Use a single variable for mode: 'corners' or 'pointer'
+let pointerDragging = false; // Track if we're currently dragging in pointer mode
+let minX, minY, maxX, maxY; // Min and max coordinates for pointer mode
 
 /**
  * Show laser pointer usage notification
@@ -494,7 +496,7 @@ function showBoundingBoxNotification() {
             <p>Current mode: <strong>${boundingbox_mode === 'corners' ? 'Corners' : 'Pointer'}</strong></p>
             <p>${boundingbox_mode === 'corners' ? 
                 'Click and drag on the image to create a bounding box. Only one bounding box can exist at a time.' : 
-                'Click on the bounding box to select it. Use pointer mode to interact with the box.'}</p>
+                'Use the pointer to track min/max XY extents. Click and move the cursor over areas to automatically expand the bounding box.'}</p>
             <button class="btn btn-sm btn-primary" id="close-bounding-box-notification">Got it!</button>
         </div>
     `;
@@ -531,16 +533,50 @@ function handleBoundingBoxMouseDown(event) {
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
     
-    // In pointer mode, just check if we clicked on the active bounding box
+    // In pointer mode, capture start of drag and initialize min/max values
     if (boundingbox_mode === 'pointer') {
-        // We'll implement pointer mode functionality later
-        if (typeof logMessage === 'function') {
-            logMessage(`Pointer mode: Click at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+        pointerDragging = true;
+        
+        // Initialize min/max with starting point
+        minX = maxX = pointer.x;
+        minY = maxY = pointer.y;
+        
+        // If there's no active bounding box, create one
+        if (!activeBoundingBox) {
+            activeBoundingBox = new fabric.Rect({
+                left: pointer.x,
+                top: pointer.y,
+                width: 0,
+                height: 0,
+                fill: 'rgba(0, 0, 255, 0.2)',
+                stroke: 'blue',
+                strokeWidth: 2,
+                selectable: true,
+                hasControls: true,
+                hasBorders: true,
+                transparentCorners: false,
+                cornerColor: 'blue',
+                cornerSize: 10,
+                cornerStyle: 'circle',
+                lockRotation: true
+            });
+            
+            window.canvas.add(activeBoundingBox);
         }
+        
+        if (typeof logMessage === 'function') {
+            logMessage(`Pointer mode: Started tracking at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+        }
+        
+        // Capture the event for recording if recording is active
+        if (typeof window.captureMouseDownDirect === 'function') {
+            window.captureMouseDownDirect(pointer.x, pointer.y, 0);
+        }
+        
         return;
     }
     
-    // Only proceed with drawing in draw mode
+    // Only proceed with drawing in corners mode
     if (boundingbox_mode !== 'corners') return;
     
     // Remove any existing bounding box before creating a new one
@@ -597,17 +633,48 @@ function handleBoundingBoxMouseDown(event) {
 function handleBoundingBoxMouseMove(event) {
     if (!boundingBoxActive) return;
     
-    // In pointer mode, just handle moving the cursor
-    if (boundingbox_mode === 'pointer') {
-        // Pointer mode functionality will be implemented later
+    // Get canvas pointer coordinates
+    const pointer = window.canvas.getPointer(event.e);
+    
+    // In pointer mode, update min/max coordinates and bounding box
+    if (boundingbox_mode === 'pointer' && pointerDragging) {
+        // Update min/max values based on current pointer position
+        minX = Math.min(minX, pointer.x);
+        maxX = Math.max(maxX, pointer.x);
+        minY = Math.min(minY, pointer.y);
+        maxY = Math.max(maxY, pointer.y);
+        
+        // Update bounding box with new min/max values
+        if (activeBoundingBox) {
+            activeBoundingBox.set({
+                left: minX,
+                top: minY,
+                width: maxX - minX,
+                height: maxY - minY
+            });
+            
+            // Refresh the canvas
+            window.canvas.renderAll();
+        }
+        
+        // Update coordinates display
+        updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
+        
+        // Occasionally log the current min/max values
+        if (Math.random() < 0.05 && typeof logMessage === 'function') {
+            logMessage(`Pointer tracking: min(${Math.round(minX)},${Math.round(minY)}) max(${Math.round(maxX)},${Math.round(maxY)})`, 'DEBUG');
+        }
+        
+        // Capture the event for recording if recording is active
+        if (typeof window.updateCursorTrailPosition === 'function') {
+            window.updateCursorTrailPosition(pointer.x, pointer.y);
+        }
+        
         return;
     }
     
-    // Only proceed with drawing in draw mode
+    // Only proceed with drawing in corners mode
     if (boundingbox_mode !== 'corners' || !currentBoundingBox || !boundingBoxStartPoint) return;
-    
-    // Get canvas pointer coordinates
-    const pointer = window.canvas.getPointer(event.e);
     
     // Calculate width and height based on mouse position
     let width = pointer.x - boundingBoxStartPoint.x;
@@ -652,10 +719,45 @@ function handleBoundingBoxMouseMove(event) {
  * @param {Event} event - Fabric.js mouse event
  */
 function handleBoundingBoxMouseUp(event) {
-    if (!boundingBoxActive || !currentBoundingBox) return;
+    if (!boundingBoxActive) return;
     
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
+    
+    // In pointer mode, finalize the bounding box
+    if (boundingbox_mode === 'pointer' && pointerDragging) {
+        pointerDragging = false;
+        
+        if (typeof logMessage === 'function') {
+            if (activeBoundingBox) {
+                logMessage(`Pointer mode: Bounding box updated to (${Math.round(minX)},${Math.round(minY)}) - (${Math.round(maxX)},${Math.round(maxY)})`, 'INFO');
+            }
+        }
+        
+        // Make sure the box has some minimum size
+        if (activeBoundingBox && (maxX - minX < 5 || maxY - minY < 5)) {
+            // Box is too small, consider removing it or resetting
+            if (typeof logMessage === 'function') {
+                logMessage('Bounding box too small, maintaining previous size', 'DEBUG');
+            }
+        } else if (activeBoundingBox) {
+            // Set the box as the active object
+            window.canvas.setActiveObject(activeBoundingBox);
+        }
+        
+        // Capture the event for recording if recording is active
+        if (typeof window.captureMouseUpDirect === 'function') {
+            window.captureMouseUpDirect(pointer.x, pointer.y, 0);
+        }
+        
+        // Refresh the canvas
+        window.canvas.renderAll();
+        
+        return;
+    }
+    
+    // Only proceed with corners mode
+    if (boundingbox_mode !== 'corners' || !currentBoundingBox) return;
     
     if (typeof logMessage === 'function') {
         logMessage(`Completed bounding box: width=${Math.round(currentBoundingBox.width)}, height=${Math.round(currentBoundingBox.height)}`, 'INFO');

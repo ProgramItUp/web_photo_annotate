@@ -159,6 +159,72 @@
     cursor: none;
 }
 
+/* Bounding box styles */
+.bounding-box {
+    border: 2px solid blue;
+    background-color: rgba(0, 0, 255, 0.2);
+    position: absolute;
+    pointer-events: all;
+}
+
+/* Bounding box handles */
+.bounding-box-handle {
+    width: 10px;
+    height: 10px;
+    background-color: blue;
+    border: 1px solid white;
+    border-radius: 50%;
+    position: absolute;
+    cursor: pointer;
+}
+
+/* Mode buttons */
+.btn-group-sm {
+    display: flex;
+    width: auto;
+}
+
+.btn-group-sm .btn {
+    flex: 1;
+    text-align: center;
+    font-size: 0.875rem;
+}
+
+/* Bounding box inline button layout */
+.d-flex {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+    align-items: stretch;
+}
+
+#tool-bounding-box {
+    flex-grow: 1;
+    display: block !important;
+    width: auto;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d-flex > .btn-group-sm {
+    width: auto;
+    flex: 0 0 auto;
+}
+
+/* Ensure consistent button sizes */
+.d-flex .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* Show the box tool when we have the bounding box feature */
+#tool-bounding-box {
+    display: block !important;
+}
+
 /* Hide specific drawing tools but keep them in the DOM */
 #tool-dot, #tool-box, #tool-circle, #tool-squiggle, 
 #tool-arrow, #tool-select, #delete-selected {
