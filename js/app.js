@@ -23,6 +23,85 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Bootstrap tooltips
     initializeTooltips();
     
+    // Parse URL parameters to check for an image URL to load automatically
+    parseUrlForImage();
+    
+    // Add event listeners for log buttons
+    const copyLogBtn = document.getElementById('copy-log');
+    const clearLogBtn = document.getElementById('clear-log');
+    
+    if (copyLogBtn) {
+        copyLogBtn.addEventListener('click', function() {
+            const logArea = document.getElementById('log-area');
+            if (logArea) {
+                const logText = logArea.value;
+                navigator.clipboard.writeText(logText)
+                    .then(() => {
+                        logMessage('Log messages copied to clipboard', 'INFO');
+                    })
+                    .catch(err => {
+                        logMessage('Failed to copy log messages: ' + err, 'ERROR');
+                        // Fallback method
+                        fallbackCopyToClipboard(logText);
+                    });
+            }
+        });
+        logMessage('Copy log button enabled', 'DEBUG');
+    }
+    
+    if (clearLogBtn) {
+        clearLogBtn.addEventListener('click', function() {
+            const logArea = document.getElementById('log-area');
+            if (logArea) {
+                logArea.value = '';
+                logMessage('Log messages cleared', 'INFO');
+            }
+        });
+        logMessage('Clear log button enabled', 'DEBUG');
+    }
+    
+    // Add event listener for share button
+    const shareBtn = document.getElementById('share-btn');
+    if (shareBtn) {
+        shareBtn.addEventListener('click', function() {
+            const urlInput = document.getElementById('url-image');
+            if (urlInput && urlInput.value) {
+                const imageUrl = encodeURIComponent(urlInput.value.trim());
+                // Create a shareable URL that includes the current page URL and the image URL as a parameter
+                const currentURL = new URL(window.location.href);
+                // Remove any existing query parameters and hash
+                currentURL.search = '';
+                currentURL.hash = '';
+                const shareableURL = `${currentURL.toString()}?image=${imageUrl}`;
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(shareableURL)
+                    .then(() => {
+                        logMessage('Shareable link copied to clipboard', 'INFO');
+                        // Show a temporary success message on the button
+                        const originalText = shareBtn.innerHTML;
+                        shareBtn.innerHTML = '<i class="bi bi-check"></i> Copied!';
+                        shareBtn.classList.add('btn-success');
+                        shareBtn.classList.remove('btn-outline-secondary');
+                        
+                        setTimeout(() => {
+                            shareBtn.innerHTML = originalText;
+                            shareBtn.classList.remove('btn-success');
+                            shareBtn.classList.add('btn-outline-secondary');
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        logMessage('Failed to copy shareable link: ' + err, 'ERROR');
+                        // Fallback method
+                        fallbackCopyToClipboard(shareableURL);
+                    });
+            } else {
+                logMessage('No image URL to share', 'WARN');
+            }
+        });
+        logMessage('Share button enabled', 'DEBUG');
+    }
+    
     // Add event listener specifically for the URL load button as requested
     const loadUrlBtn = document.getElementById('load-url-btn');
     if (loadUrlBtn) {
@@ -458,6 +537,112 @@ function initializeTooltips() {
     } catch (error) {
         console.error('Error initializing tooltips:', error);
         logMessage('Failed to initialize tooltips: ' + error.message, 'ERROR');
+    }
+}
+
+/**
+ * Fallback method to copy text to clipboard
+ * @param {string} text - Text to copy
+ */
+function fallbackCopyToClipboard(text) {
+    try {
+        // Create textarea element
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        
+        // Make the textarea out of viewport
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        
+        // Select and copy
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+            logMessage('Log content copied to clipboard using fallback method', 'INFO');
+        } else {
+            logMessage('Unable to copy log to clipboard using fallback method', 'WARN');
+            alert('Could not copy log to clipboard. Please select the text manually and copy it.');
+        }
+    } catch (err) {
+        logMessage(`Error in fallback copy: ${err.message}`, 'ERROR');
+        alert('Could not copy log to clipboard. Please select the text manually and copy it.');
+    }
+}
+
+/**
+ * Parse URL parameters to check for an image URL to load automatically
+ */
+function parseUrlForImage() {
+    try {
+        // First try the standard query parameter approach
+        const urlParams = new URLSearchParams(window.location.search);
+        const imageUrl = urlParams.get('image');
+        
+        if (imageUrl) {
+            // Image found in query parameter
+            logMessage(`Image URL found in query parameters: ${imageUrl}`, 'INFO');
+            
+            // Update the URL input field
+            const urlInput = document.getElementById('url-image');
+            if (urlInput) urlInput.value = imageUrl;
+            
+            // Load the image
+            loadImageFromUrl(imageUrl);
+            return;
+        }
+        
+        // Check for hash fragment parameters (format: #image=URL)
+        const hash = window.location.hash;
+        if (hash && hash.includes('image=')) {
+            const hashImageUrl = hash.substring(hash.indexOf('image=') + 6);
+            // Handle any additional hash parameters by cutting at the first &
+            const cleanImageUrl = hashImageUrl.split('&')[0];
+            
+            if (cleanImageUrl) {
+                logMessage(`Image URL found in hash fragment: ${cleanImageUrl}`, 'INFO');
+                
+                // Update the URL input field
+                const urlInput = document.getElementById('url-image');
+                if (urlInput) urlInput.value = cleanImageUrl;
+                
+                // Load the image
+                loadImageFromUrl(cleanImageUrl);
+                return;
+            }
+        }
+        
+        // Alternative format: Check if URL contains a plus (+) sign to separate base URL from image URL
+        // Format: http://github.com/ProgramItUp/web_photo_annotate+myURL.com/myimage.jpg
+        const fullUrl = window.location.href;
+        const plusIndex = fullUrl.indexOf('+');
+        
+        if (plusIndex !== -1) {
+            // Extract everything after the + sign
+            const extractedImageUrl = fullUrl.substring(plusIndex + 1);
+            
+            if (extractedImageUrl) {
+                logMessage(`Image URL found using + separator: ${extractedImageUrl}`, 'INFO');
+                
+                // Update the URL input field
+                const urlInput = document.getElementById('url-image');
+                if (urlInput) urlInput.value = extractedImageUrl;
+                
+                // Load the image
+                loadImageFromUrl(extractedImageUrl);
+                return;
+            }
+        }
+        
+        // If we reach here, no image URL was found
+        logMessage('No image URL found in URL parameters', 'DEBUG');
+    } catch (error) {
+        logMessage(`Error parsing URL for image: ${error.message}`, 'ERROR');
     }
 }
 

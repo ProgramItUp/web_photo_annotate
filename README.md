@@ -15,6 +15,7 @@ A standalone web application for annotating images and recording mouse movements
 - Save/load annotation data
 - Option to email annotation data
 - Replay recorded mouse movements
+- Load images directly via URL parameters
 
 ## Project Structure
 
@@ -48,6 +49,27 @@ The application is organized into multiple files for better maintainability:
 8. Save your annotation data using the "Save Annotation Data" button
 9. Optionally replay your recording with the "Replay Recording" button
 
+### Loading Images via URL Parameters
+
+You can automatically load an image when opening the application by using one of the following URL formats:
+
+1. Query parameter format:
+   ```
+   index.html?image=https://example.com/image.jpg
+   ```
+
+2. Hash fragment format:
+   ```
+   index.html#image=https://example.com/image.jpg
+   ```
+
+3. Plus sign separator format:
+   ```
+   index.html+https://example.com/image.jpg
+   ```
+
+All image loading is processed locally - no data is sent to external servers.
+
 ## Dependencies
 
 This application uses several libraries, all loaded via CDN:
@@ -71,3 +93,4 @@ This tool works best in modern browsers such as:
 - The email functionality requires additional configuration with an email service
 - All data is processed client-side; no server interaction is required
 - Audio and image data are stored locally in the browser 
+

@@ -2,6 +2,11 @@
  * Audio recording functionality using MediaStream Recording API
  */
 
+// Make sure drawingTools.js is loaded first
+if (!window.DrawingTools) {
+    console.error('DrawingTools module not loaded! Make sure drawingTools.js is included before recording.js');
+}
+
 // State variables
 let mediaRecorder = null;
 let audioStream = null;
@@ -25,42 +30,9 @@ const MOUSE_MOVE_CAPTURE_INTERVAL = 50; // Capture at most every 50ms (20 points
 window.isRecording = function() { return isRecording; };
 window.isPaused = function() { return isPaused; };
 window.mouseData = mouseData;  // Make mouseData available to other modules
+window.getCurrentRecordingTime = getCurrentRecordingTime; // Make this function available to drawingTools
 
-// Add hook to capture cursor trail updates directly
-window.updateCursorTrailPosition = function(x, y) {
-    // If we are recording, also store this position in the mouse data
-    if (isRecording && !isPaused) {
-        const now = Date.now();
-        // Don't throttle laser pointer movements for better trail quality
-        const isLaserActive = true; // If this function is called, we know laser is active
-        
-        // Get elapsed recording time
-        const elapsedTimeMs = getCurrentRecordingTime();
-        
-        // Ensure x and y are valid numbers
-        if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-            console.error(`Invalid cursor position: x=${x}, y=${y}`);
-            return;
-        }
-        
-        // Store mouse data with timestamp
-        mouseData.push({
-            type: 'move',
-            x: x,
-            y: y,
-            timeOffset: elapsedTimeMs, // Time in ms from recording start
-            realTime: now,
-            isLaserPointer: isLaserActive, // This is definitely a laser pointer movement
-            source: 'cursorTrail' // Mark the source of this data point
-        });
-        
-        // Log occasionally to prevent log spam
-        if (now % 1000 < 20) {
-            logMessage(`Captured cursor trail position: X: ${Math.round(x)}, Y: ${Math.round(y)}`, 'DEBUG');
-            logMessage(`Total mouse data points: ${mouseData.length}`, 'DEBUG');
-        }
-    }
-};
+// The updateCursorTrailPosition function is now moved to drawingTools.js
 
 /**
  * Check if microphone permissions are already granted
@@ -264,66 +236,7 @@ function initializeMicrophone() {
         });
 }
 
-// Add direct mouse event capture functions
-window.captureMouseDownDirect = function(x, y, button) {
-    if (!isRecording || isPaused) return;
-    
-    // Ensure coordinates are valid
-    if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-        console.error(`Invalid mouse down position: x=${x}, y=${y}`);
-        return;
-    }
-    
-    const now = Date.now();
-    const elapsedTimeMs = getCurrentRecordingTime();
-    
-    // Log that we're capturing this event
-    logMessage(`Direct capture of mouse down: X: ${Math.round(x)}, Y: ${Math.round(y)}, button: ${button}`, 'DEBUG');
-    
-    // Store in mouse data
-    mouseData.push({
-        type: 'down',
-        button: button,
-        x: x,
-        y: y,
-        timeOffset: elapsedTimeMs,
-        realTime: now,
-        isLaserPointer: true, // Since this comes from cursor trail system
-        source: 'direct' // Mark the source
-    });
-    
-    logMessage(`Mouse DOWN event recorded at ${elapsedTimeMs}ms (data point #${mouseData.length})`, 'DEBUG');
-};
-
-window.captureMouseUpDirect = function(x, y, button) {
-    if (!isRecording || isPaused) return;
-    
-    // Ensure coordinates are valid
-    if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-        console.error(`Invalid mouse up position: x=${x}, y=${y}`);
-        return;
-    }
-    
-    const now = Date.now();
-    const elapsedTimeMs = getCurrentRecordingTime();
-    
-    // Log that we're capturing this event
-    logMessage(`Direct capture of mouse up: X: ${Math.round(x)}, Y: ${Math.round(y)}, button: ${button}`, 'DEBUG');
-    
-    // Store in mouse data
-    mouseData.push({
-        type: 'up',
-        button: button,
-        x: x,
-        y: y,
-        timeOffset: elapsedTimeMs,
-        realTime: now,
-        isLaserPointer: true, // Since this comes from cursor trail system
-        source: 'direct' // Mark the source
-    });
-    
-    logMessage(`Mouse UP event recorded at ${elapsedTimeMs}ms (data point #${mouseData.length})`, 'DEBUG');
-};
+// These direct mouse capture functions are now moved to drawingTools.js
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Recording system initialized');
@@ -518,41 +431,14 @@ function updateRecordingTimer() {
 }
 
 /**
- * Show laser pointer usage notification
+ * Show laser pointer usage notification - moved to DrawingTools, keeping stub for compatibility
  */
 function showLaserPointerNotification() {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = 'alert alert-warning position-fixed top-50 start-50 translate-middle';
-    notification.style.zIndex = '9999';
-    notification.style.maxWidth = '400px';
-    notification.innerHTML = `
-        <div class="text-center">
-            <h5>Laser Pointer Mode Active</h5>
-            <p>Click and drag on the image to use the laser pointer.</p>
-            <p>The laser pointer is automatically activated when you press the left mouse button.</p>
-            <button class="btn btn-sm btn-primary" id="close-laser-notification">Got it!</button>
-        </div>
-    `;
-    
-    // Add to document
-    document.body.appendChild(notification);
-    
-    // Add event listener to close button
-    document.getElementById('close-laser-notification').addEventListener('click', function() {
-        if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-    });
-    
-    // Auto-remove after 5 seconds
-    setTimeout(function() {
-        if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-    }, 5000);
-    
-    logMessage('Laser pointer notification shown', 'DEBUG');
+    if (window.DrawingTools) {
+        window.DrawingTools.showLaserPointerNotification();
+    } else {
+        console.error('DrawingTools module not available for showing laser pointer notification');
+    }
 }
 
 /**
@@ -2212,8 +2098,8 @@ function replayAnnotation() {
      * Continue with replay after image is loaded
      */
     function continueReplay() {
-        // Create a replay cursor if it doesn't exist
-        createReplayCursor();
+        // Create a replay cursor if it doesn't exist - use DrawingTools
+        window.DrawingTools.createReplayCursor();
         
         // Variables to track replay state
         let isReplaying = true;
@@ -2265,7 +2151,7 @@ function replayAnnotation() {
                 if (animationFrameId) {
                     cancelAnimationFrame(animationFrameId);
                 }
-                hideReplayCursor();
+                window.DrawingTools.hideReplayCursor();
                 URL.revokeObjectURL(audioURL);
                 
                 // Ensure replay button is reset
@@ -2373,7 +2259,7 @@ function replayAnnotation() {
             }
             
             // Hide cursor and cleanup
-            hideReplayCursor();
+            window.DrawingTools.hideReplayCursor();
             
             logMessage('Replay stopped by user', 'INFO');
             
@@ -2404,8 +2290,8 @@ function replayAnnotation() {
                         logMessage(`Replay at ${elapsedMs}ms: ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})${dataPoint.isLaserPointer ? ' (laser)' : ''}`, 'DEBUG');
                     }
                     
-                    // Update cursor position
-                    updateReplayCursor(dataPoint);
+                    // Update cursor position using DrawingTools
+                    window.DrawingTools.updateReplayCursor(dataPoint);
                     
                     // Move to next data point
                     currentDataIndex++;
@@ -2416,7 +2302,7 @@ function replayAnnotation() {
                     // If we don't have audio or audio has ended, end the replay
                     if (!audioElement || (audioElement && audioElement.ended)) {
                         isReplaying = false;
-                        hideReplayCursor();
+                        window.DrawingTools.hideReplayCursor();
                         logMessage('Replay completed', 'INFO');
                         
                         // Reset replay button using the helper function
@@ -3258,12 +3144,7 @@ function saveMouseDataForDebug() {
     }
 } 
 
-// Export functions for use in other modules
+// Export functions for use in other modules - No longer exporting drawing tool functions
 window.startCaptureMouseData = startCaptureMouseData;
 window.stopCaptureMouseData = stopCaptureMouseData;
-window.isRecording = isRecording;
-window.startLaserTrail = startLaserTrail;
-window.clearLaserTrail = clearLaserTrail;
-window.addToLaserTrail = addToLaserTrail;
-window.drawLaserTrail = drawLaserTrail;
 window.saveMouseDataForDebug = saveMouseDataForDebug; 
