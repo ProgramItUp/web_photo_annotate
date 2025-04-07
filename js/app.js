@@ -220,6 +220,77 @@ function initializeApp() {
  */
 function setupEventListeners() {
     logMessage('Event handling code removed as requested', 'DEBUG');
+    
+    // Add event listener for the Bounding Box button
+    const boundingBoxButton = document.getElementById('tool-bounding-box');
+    if (boundingBoxButton) {
+        boundingBoxButton.addEventListener('click', function() {
+            logMessage('Bounding Box tool selected', 'INFO');
+            if (window.DrawingTools && typeof window.DrawingTools.initBoundingBox === 'function') {
+                // Deactivate other tools first if needed
+                if (typeof window.DrawingTools.deactivateBoundingBox === 'function') {
+                    window.DrawingTools.deactivateBoundingBox();
+                }
+                
+                // Activate bounding box mode
+                window.DrawingTools.initBoundingBox();
+                
+                // Update UI to show selected tool
+                const allToolButtons = document.querySelectorAll('.btn-group-vertical .btn');
+                allToolButtons.forEach(button => {
+                    button.classList.remove('active');
+                    button.classList.remove('btn-primary');
+                    button.classList.add('btn-outline-primary');
+                });
+                
+                // Highlight this button
+                boundingBoxButton.classList.add('active');
+                boundingBoxButton.classList.remove('btn-outline-primary');
+                boundingBoxButton.classList.add('btn-primary');
+            } else {
+                logMessage('Bounding Box functionality not available', 'ERROR');
+            }
+        });
+        
+        logMessage('Bounding Box button enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find Bounding Box button', 'WARN');
+    }
+    
+    // Add event listener for the Laser Pointer button
+    const laserPointerButton = document.getElementById('tool-laser');
+    if (laserPointerButton) {
+        laserPointerButton.addEventListener('click', function() {
+            logMessage('Laser Pointer tool selected', 'INFO');
+            
+            // Deactivate bounding box if it's active
+            if (window.DrawingTools && typeof window.DrawingTools.deactivateBoundingBox === 'function') {
+                window.DrawingTools.deactivateBoundingBox();
+            }
+            
+            // Show laser pointer notification
+            if (window.DrawingTools && typeof window.DrawingTools.showLaserPointerNotification === 'function') {
+                window.DrawingTools.showLaserPointerNotification();
+            }
+            
+            // Update UI to show selected tool
+            const allToolButtons = document.querySelectorAll('.btn-group-vertical .btn');
+            allToolButtons.forEach(button => {
+                button.classList.remove('active');
+                button.classList.remove('btn-primary');
+                button.classList.add('btn-outline-primary');
+            });
+            
+            // Highlight this button
+            laserPointerButton.classList.add('active');
+            laserPointerButton.classList.remove('btn-outline-primary');
+            laserPointerButton.classList.add('btn-primary');
+        });
+        
+        logMessage('Laser Pointer button enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find Laser Pointer button', 'WARN');
+    }
 }
 
 /**

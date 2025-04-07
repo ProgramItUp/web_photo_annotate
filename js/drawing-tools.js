@@ -388,6 +388,244 @@ function updateCoordinatesDisplay(x, y) {
     }
 }
 
+// Bounding Box functionality
+/**
+ * Create and manage a resizable bounding box
+ */
+let boundingBoxActive = false;
+let currentBoundingBox = null;
+let boundingBoxStartPoint = null;
+
+/**
+ * Initialize the bounding box functionality
+ */
+function initBoundingBox() {
+    if (typeof logMessage === 'function') {
+        logMessage('Initializing bounding box mode', 'DEBUG');
+    }
+    
+    // Make sure the canvas is initialized
+    if (!window.canvas) {
+        if (typeof logMessage === 'function') {
+            logMessage('Canvas not available for bounding box', 'ERROR');
+        }
+        return;
+    }
+    
+    boundingBoxActive = true;
+    
+    // Show a notification about bounding box mode
+    showBoundingBoxNotification();
+    
+    // Set up the canvas for bounding box creation
+    window.canvas.on('mouse:down', handleBoundingBoxMouseDown);
+    window.canvas.on('mouse:move', handleBoundingBoxMouseMove);
+    window.canvas.on('mouse:up', handleBoundingBoxMouseUp);
+    
+    if (typeof logMessage === 'function') {
+        logMessage('Bounding box mode activated', 'INFO');
+    }
+}
+
+/**
+ * Deactivate the bounding box mode
+ */
+function deactivateBoundingBox() {
+    boundingBoxActive = false;
+    
+    // Remove event listeners
+    if (window.canvas) {
+        window.canvas.off('mouse:down', handleBoundingBoxMouseDown);
+        window.canvas.off('mouse:move', handleBoundingBoxMouseMove);
+        window.canvas.off('mouse:up', handleBoundingBoxMouseUp);
+    }
+    
+    if (typeof logMessage === 'function') {
+        logMessage('Bounding box mode deactivated', 'INFO');
+    }
+}
+
+/**
+ * Show a notification about bounding box mode
+ */
+function showBoundingBoxNotification() {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-info position-fixed top-50 start-50 translate-middle';
+    notification.style.zIndex = '9999';
+    notification.style.maxWidth = '400px';
+    notification.innerHTML = `
+        <div class="text-center">
+            <h5>Bounding Box Mode Active</h5>
+            <p>Click and drag on the image to create a bounding box.</p>
+            <p>Use the handles to resize the box after creation.</p>
+            <button class="btn btn-sm btn-primary" id="close-bounding-box-notification">Got it!</button>
+        </div>
+    `;
+    
+    // Add to document
+    document.body.appendChild(notification);
+    
+    // Add event listener to close button
+    document.getElementById('close-bounding-box-notification').addEventListener('click', function() {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    });
+    
+    // Auto-remove after 5 seconds
+    setTimeout(function() {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 5000);
+    
+    if (typeof logMessage === 'function') {
+        logMessage('Bounding box notification shown', 'DEBUG');
+    }
+}
+
+/**
+ * Handle mouse down event for bounding box
+ * @param {Event} event - Fabric.js mouse event
+ */
+function handleBoundingBoxMouseDown(event) {
+    if (!boundingBoxActive) return;
+    
+    // Get canvas pointer coordinates
+    const pointer = window.canvas.getPointer(event.e);
+    
+    // Store the starting point
+    boundingBoxStartPoint = {
+        x: pointer.x,
+        y: pointer.y
+    };
+    
+    // Create a new bounding box
+    currentBoundingBox = new fabric.Rect({
+        left: pointer.x,
+        top: pointer.y,
+        width: 0,
+        height: 0,
+        fill: 'rgba(0, 0, 255, 0.2)',
+        stroke: 'blue',
+        strokeWidth: 2,
+        selectable: true,
+        hasControls: true,
+        hasBorders: true,
+        transparentCorners: false,
+        cornerColor: 'blue',
+        cornerSize: 10,
+        cornerStyle: 'circle',
+        // Enable all control points
+        lockMovementX: false,
+        lockMovementY: false,
+        lockRotation: true, // No rotation for bounding box
+        lockScalingX: false,
+        lockScalingY: false,
+        lockUniScaling: false
+    });
+    
+    // Add the box to the canvas
+    window.canvas.add(currentBoundingBox);
+    
+    if (typeof logMessage === 'function') {
+        logMessage(`Started drawing bounding box at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+    }
+    
+    // Capture the event for recording if recording is active
+    if (typeof window.captureMouseDownDirect === 'function') {
+        window.captureMouseDownDirect(pointer.x, pointer.y, 0);
+    }
+}
+
+/**
+ * Handle mouse move event for bounding box
+ * @param {Event} event - Fabric.js mouse event
+ */
+function handleBoundingBoxMouseMove(event) {
+    if (!boundingBoxActive || !currentBoundingBox || !boundingBoxStartPoint) return;
+    
+    // Get canvas pointer coordinates
+    const pointer = window.canvas.getPointer(event.e);
+    
+    // Calculate width and height based on mouse position
+    let width = pointer.x - boundingBoxStartPoint.x;
+    let height = pointer.y - boundingBoxStartPoint.y;
+    
+    // Handle negative dimensions (dragging left or up)
+    if (width < 0) {
+        currentBoundingBox.set('left', pointer.x);
+        width = Math.abs(width);
+    }
+    
+    if (height < 0) {
+        currentBoundingBox.set('top', pointer.y);
+        height = Math.abs(height);
+    }
+    
+    // Update the bounding box dimensions
+    currentBoundingBox.set({
+        width: width,
+        height: height
+    });
+    
+    // Refresh the canvas
+    window.canvas.renderAll();
+    
+    // Update coordinates display
+    updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
+    
+    // Log occasionally to prevent spam
+    if (Math.random() < 0.05 && typeof logMessage === 'function') {
+        logMessage(`Drawing bounding box: width=${Math.round(width)}, height=${Math.round(height)}`, 'DEBUG');
+    }
+    
+    // Capture the event for recording if recording is active
+    if (typeof window.updateCursorTrailPosition === 'function') {
+        window.updateCursorTrailPosition(pointer.x, pointer.y);
+    }
+}
+
+/**
+ * Handle mouse up event for bounding box
+ * @param {Event} event - Fabric.js mouse event
+ */
+function handleBoundingBoxMouseUp(event) {
+    if (!boundingBoxActive || !currentBoundingBox) return;
+    
+    // Get canvas pointer coordinates
+    const pointer = window.canvas.getPointer(event.e);
+    
+    if (typeof logMessage === 'function') {
+        logMessage(`Completed bounding box: width=${Math.round(currentBoundingBox.width)}, height=${Math.round(currentBoundingBox.height)}`, 'INFO');
+    }
+    
+    // Make sure the box has some minimum size
+    if (currentBoundingBox.width < 5 || currentBoundingBox.height < 5) {
+        // Box is too small, remove it
+        window.canvas.remove(currentBoundingBox);
+        if (typeof logMessage === 'function') {
+            logMessage('Bounding box too small, removed', 'DEBUG');
+        }
+    } else {
+        // Set the box as the active object so it can be immediately resized
+        window.canvas.setActiveObject(currentBoundingBox);
+    }
+    
+    // Reset tracking variables
+    currentBoundingBox = null;
+    boundingBoxStartPoint = null;
+    
+    // Capture the event for recording if recording is active
+    if (typeof window.captureMouseUpDirect === 'function') {
+        window.captureMouseUpDirect(pointer.x, pointer.y, 0);
+    }
+    
+    // Refresh the canvas
+    window.canvas.renderAll();
+}
+
 // Direct mouse event capture functions for cursor trail system
 window.captureMouseDownDirect = function(x, y, button) {
     // Check if recording is active using the global functions
@@ -527,5 +765,8 @@ window.DrawingTools = {
     createReplayCursor,
     updateReplayCursor,
     hideReplayCursor,
-    updateCoordinatesDisplay
+    updateCoordinatesDisplay,
+    // Add the new bounding box functions to the export
+    initBoundingBox,
+    deactivateBoundingBox
 }; 
