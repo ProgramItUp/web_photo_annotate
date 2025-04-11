@@ -9,6 +9,109 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('DOMContentLoaded fired');
     console.log('initializeCanvas available =', typeof window.initializeCanvas);
     
+    // NUCLEAR SOLUTION: Override createElement to catch the culprit creating the popup
+    const originalCreateElement = document.createElement;
+    document.createElement = function(tag) {
+        const element = originalCreateElement.call(document, tag);
+        
+        // For divs, add special tracking
+        if (tag.toLowerCase() === 'div') {
+            // Add listeners to catch when text is set
+            const originalInnerTextSetter = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText').set;
+            const originalTextContentSetter = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent').set;
+            const originalInnerHTMLSetter = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+            
+            // Override innerText setter
+            Object.defineProperty(element, 'innerText', {
+                set: function(value) {
+                    if (value && value.includes('Bounding Box Mode Active')) {
+                        console.error('CAUGHT CULPRIT setting innerText with "Bounding Box Mode Active":', new Error().stack);
+                        // Immediately prevent it from showing up
+                        element.style.display = 'none';
+                    }
+                    return originalInnerTextSetter.call(this, value);
+                },
+                get: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText').get
+            });
+            
+            // Override textContent setter
+            Object.defineProperty(element, 'textContent', {
+                set: function(value) {
+                    if (value && value.includes('Bounding Box Mode Active')) {
+                        console.error('CAUGHT CULPRIT setting textContent with "Bounding Box Mode Active":', new Error().stack);
+                        // Immediately prevent it from showing up
+                        element.style.display = 'none';
+                    }
+                    return originalTextContentSetter.call(this, value);
+                },
+                get: Object.getOwnPropertyDescriptor(Node.prototype, 'textContent').get
+            });
+            
+            // Override innerHTML setter
+            Object.defineProperty(element, 'innerHTML', {
+                set: function(value) {
+                    if (value && value.includes('Bounding Box Mode Active')) {
+                        console.error('CAUGHT CULPRIT setting innerHTML with "Bounding Box Mode Active":', new Error().stack);
+                        // Immediately prevent it from showing up
+                        element.style.display = 'none';
+                    }
+                    return originalInnerHTMLSetter.call(this, value);
+                },
+                get: Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').get
+            });
+        }
+        
+        return element;
+    };
+    
+    // NUCLEAR SOLUTION PART 2: Poll for any popups every 100ms as a fallback
+    setInterval(() => {
+        const elements = document.querySelectorAll('div');
+        elements.forEach(el => {
+            if (el.innerText && el.innerText.includes('Bounding Box Mode Active') && el.style.display !== 'none') {
+                console.error('CAUGHT POPUP VIA POLLING:', el);
+                console.log('PARENT ELEMENT:', el.parentNode);
+                el.style.display = 'none';
+            }
+        });
+    }, 100);
+    
+    // Add MutationObserver to instantly catch and remove any popup with "Bounding Box Mode Active" text
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+                for (let i = 0; i < mutation.addedNodes.length; i++) {
+                    const node = mutation.addedNodes[i];
+                    // Check if it's an element node and has innerText
+                    if (node.nodeType === 1) {
+                        // Check the node itself
+                        if (node.innerText && node.innerText.includes('Bounding Box Mode Active')) {
+                            node.parentNode.removeChild(node);
+                            console.log('Popup notification removed by observer');
+                        }
+                        
+                        // Also check child nodes (using querySelectorAll for deeper traversal)
+                        if (node.querySelectorAll) {
+                            const childElements = node.querySelectorAll('*');
+                            childElements.forEach(function(el) {
+                                if (el.innerText && el.innerText.includes('Bounding Box Mode Active')) {
+                                    el.parentNode.removeChild(el);
+                                    console.log('Nested popup notification removed by observer');
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        });
+    });
+    
+    // Start observing the entire document with all its child nodes
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    
     // Initialize the application without delay since canvas.js is loaded synchronously now
     initializeApp();
     
@@ -225,10 +328,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 cornersButton.classList.remove('btn-primary');
                 cornersButton.classList.add('btn-outline-primary');
                 
-                // Show notification if bounding box mode is active
-                if (window.DrawingTools && typeof window.DrawingTools.showBoundingBoxNotification === 'function') {
-                    window.DrawingTools.showBoundingBoxNotification();
-                }
+                // Remove notification call to avoid popup
+                // if (window.DrawingTools && typeof window.DrawingTools.showBoundingBoxNotification === 'function') {
+                //    window.DrawingTools.showBoundingBoxNotification();
+                // }
+                
+                // ADDED: Remove any "Bounding Box Mode Active" notifications 
+                setTimeout(() => {
+                    // Find and remove any elements containing "Bounding Box Mode Active" text
+                    const elements = document.querySelectorAll('div');
+                    elements.forEach(el => {
+                        if (el.innerText && el.innerText.includes('Bounding Box Mode Active')) {
+                            logMessage('Removing popup notification about bounding box', 'DEBUG');
+                            el.parentNode.removeChild(el);
+                        }
+                    });
+                }, 0);
                 
                 logMessage('Pointer mode activated for bounding box', 'INFO');
             } else {
@@ -247,10 +362,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 pointerButton.classList.remove('btn-primary');
                 pointerButton.classList.add('btn-outline-primary');
                 
-                // Show notification if bounding box mode is active
-                if (window.DrawingTools && typeof window.DrawingTools.showBoundingBoxNotification === 'function') {
-                    window.DrawingTools.showBoundingBoxNotification();
-                }
+                // Remove notification call to avoid popup
+                // if (window.DrawingTools && typeof window.DrawingTools.showBoundingBoxNotification === 'function') {
+                //    window.DrawingTools.showBoundingBoxNotification();
+                // }
+                
+                // ADDED: Remove any "Bounding Box Mode Active" notifications 
+                setTimeout(() => {
+                    // Find and remove any elements containing "Bounding Box Mode Active" text
+                    const elements = document.querySelectorAll('div');
+                    elements.forEach(el => {
+                        if (el.innerText && el.innerText.includes('Bounding Box Mode Active')) {
+                            logMessage('Removing popup notification about bounding box', 'DEBUG');
+                            el.parentNode.removeChild(el);
+                        }
+                    });
+                }, 0);
                 
                 logMessage('Corners mode activated for bounding box', 'INFO');
             } else {
@@ -326,6 +453,18 @@ function setupEventListeners() {
                 
                 // Activate bounding box mode
                 window.DrawingTools.initBoundingBox();
+                
+                // ADDED: Remove any "Bounding Box Mode Active" notifications 
+                setTimeout(() => {
+                    // Find and remove any elements containing "Bounding Box Mode Active" text
+                    const elements = document.querySelectorAll('div');
+                    elements.forEach(el => {
+                        if (el.innerText && el.innerText.includes('Bounding Box Mode Active')) {
+                            logMessage('Removing popup notification about bounding box', 'DEBUG');
+                            el.parentNode.removeChild(el);
+                        }
+                    });
+                }, 0);
                 
                 // Update UI to show selected tool
                 const allToolButtons = document.querySelectorAll('.btn-group-vertical .btn');

@@ -913,12 +913,7 @@ function startCaptureMouseData() {
             if (e.clientX >= rect.left && e.clientX <= rect.right && 
                 e.clientY >= rect.top && e.clientY <= rect.bottom) {
                 
-                // Only log occasionally to avoid spam
-                if (Math.random() < 0.001) {
-                    logMessage(`Document mousemove detected over canvas at (${e.clientX-rect.left}, ${e.clientY-rect.top})`, 'DEBUG');
-                }
-                
-                // Check if this is with button pressed
+                // Check if button is pressed
                 if (e.buttons === 1) {
                     // Get elapsed recording time
                     const elapsedTimeMs = getCurrentRecordingTime();
@@ -928,6 +923,10 @@ function startCaptureMouseData() {
                     const x = e.clientX - rect.left;
                     const y = e.clientY - rect.top;
                     
+                    // Check if we're in bounding box mode
+                    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
+                                              window.DrawingTools.isInBoundingBoxMode();
+                    
                     // Store in mouse data
                     mouseData.push({
                         type: 'move',
@@ -935,7 +934,8 @@ function startCaptureMouseData() {
                         y: y,
                         timeOffset: elapsedTimeMs,
                         realTime: now,
-                        isLaserPointer: true, // This is definitely a laser pointer (left button pressed)
+                        isLaserPointer: !isInBoundingBoxMode, // Only mark as laser pointer if NOT in bounding box mode
+                        isBoundingBox: isInBoundingBoxMode,   // Explicitly mark as bounding box if in that mode
                         source: 'document', // Mark that this came from document listener
                         buttons: e.buttons
                     });
@@ -946,7 +946,7 @@ function startCaptureMouseData() {
                     }
                     
                     if (Math.random() < 0.01) {
-                        logMessage(`Captured laser move via document: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
+                        logMessage(`Captured ${isInBoundingBoxMode ? 'bounding box' : 'laser'} move via document: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
                         logMessage(`Total mouse data points: ${mouseData.length}`, 'DEBUG');
                     }
                 }
@@ -974,6 +974,10 @@ function startCaptureMouseData() {
                     
                     logMessage(`Document mousedown detected over canvas at (${Math.round(x)}, ${Math.round(y)})`, 'INFO');
                     
+                    // Check if we're in bounding box mode - we need to consult the DrawingTools module
+                    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
+                                              window.DrawingTools.isInBoundingBoxMode();
+                    
                     // Store in mouse data
                     mouseData.push({
                         type: 'down',
@@ -982,7 +986,8 @@ function startCaptureMouseData() {
                         y: y,
                         timeOffset: elapsedTimeMs,
                         realTime: now,
-                        isLaserPointer: true, // This is a laser pointer activation
+                        isLaserPointer: !isInBoundingBoxMode, // Only mark as laser pointer if NOT in bounding box mode
+                        isBoundingBox: isInBoundingBoxMode,   // Explicitly mark as bounding box if in that mode
                         source: 'document' // Mark that this came from document listener
                     });
                     
@@ -1011,6 +1016,10 @@ function startCaptureMouseData() {
                     
                     logMessage(`Document mouseup detected over canvas at (${Math.round(x)}, ${Math.round(y)})`, 'INFO');
                     
+                    // Check if we're in bounding box mode - we need to consult the DrawingTools module
+                    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
+                                              window.DrawingTools.isInBoundingBoxMode();
+                    
                     // Store in mouse data
                     mouseData.push({
                         type: 'up',
@@ -1019,7 +1028,8 @@ function startCaptureMouseData() {
                         y: y,
                         timeOffset: elapsedTimeMs,
                         realTime: now,
-                        isLaserPointer: true, // This is a laser pointer deactivation
+                        isLaserPointer: !isInBoundingBoxMode, // Only mark as laser pointer if NOT in bounding box mode
+                        isBoundingBox: isInBoundingBoxMode,   // Explicitly mark as bounding box if in that mode
                         source: 'document' // Mark that this came from document listener
                     });
                     
@@ -1115,13 +1125,17 @@ function captureMouseMove(e) {
     
     const now = Date.now();
     
-    // Get multiple ways to check if laser is active
+    // Check if we're in bounding box mode
+    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
+                              window.DrawingTools.isInBoundingBoxMode();
+    
+    // Get multiple ways to check if laser is active - should NOT mark as laser if in bounding box mode
     const isLaserActive = 
-        window.showCursorTail === true || 
+        (window.showCursorTail === true || 
         window.cursorTrailActive === true ||
         document.body.classList.contains('laser-active') ||
         (window.drawingTools && window.drawingTools.currentTool === 'laser' && e.buttons === 1) || // Left button pressed
-        e.buttons === 1; // Simplify - if left button is pressed, consider it laser active
+        e.buttons === 1) && !isInBoundingBoxMode; // Only consider laser active if NOT in bounding box mode
     
     // Throttle mouse move events to avoid excessive data points
     // Only capture if it's been at least MOUSE_MOVE_CAPTURE_INTERVAL ms since last capture
@@ -1161,7 +1175,8 @@ function captureMouseMove(e) {
     
     // Log what we're capturing (but not too often to avoid log spam)
     if (now % 500 < 50) { // Only log approximately every 500ms
-        logMessage(`Capturing mouse move: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, laser: ${isLaserActive}`, 'DEBUG');
+        const actionType = isInBoundingBoxMode ? 'bounding box move' : 'mouse move';
+        logMessage(`Capturing ${actionType}: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, laser: ${isLaserActive}`, 'DEBUG');
     }
     
     // Store mouse data with timestamp
@@ -1172,6 +1187,7 @@ function captureMouseMove(e) {
         timeOffset: elapsedTimeMs, // Time in ms from recording start
         realTime: now,
         isLaserPointer: isLaserActive, // Flag if this is a laser pointer movement
+        isBoundingBox: isInBoundingBoxMode, // Flag if this is a bounding box movement
         buttons: e.buttons   // Store the button state for debugging
     });
 }
@@ -1379,6 +1395,15 @@ function saveAnnotationData() {
         
         // Log diagnostics about the mouse data being saved
         logMouseDataDiagnostics(mouseData, 'save');
+        
+        // Add specific verification for bounding box data
+        const boundingBoxEvents = mouseData.filter(data => data.isBoundingBox === true);
+        logMessage(`Found ${boundingBoxEvents.length} bounding box events in recording data`, 'INFO');
+        if (boundingBoxEvents.length > 0) {
+            // Log a sample bounding box event
+            const sampleEvent = boundingBoxEvents[boundingBoxEvents.length - 1]; // Last event to get final state
+            logMessage(`Sample bounding box data: mode=${sampleEvent.boundingbox_mode}, coords=${JSON.stringify(sampleEvent.boxCoords || {})}`, 'INFO');
+        }
         
         // Check if we have a canvas with an image
         if (!window.canvas) {
@@ -1594,6 +1619,15 @@ function getAnnotationsFromCanvas() {
             
             // Get all objects from canvas except the main image
             const objects = canvas.getObjects();
+            
+            // Log objects for debugging
+            logMessage(`Found ${objects.length} total objects on canvas for potential annotation`, 'DEBUG');
+            objects.forEach((obj, idx) => {
+                if (obj.type !== 'image') {
+                    logMessage(`Canvas object #${idx+1}: type=${obj.type}, left=${Math.round(obj.left)}, top=${Math.round(obj.top)}, width=${Math.round(obj.width)}, height=${Math.round(obj.height)}`, 'DEBUG');
+                }
+            });
+            
             const annotations = objects
                 .filter(obj => obj.type !== 'image' && !obj.isCursorTrail)
                 .map(obj => {
@@ -1620,6 +1654,8 @@ function getAnnotationsFromCanvas() {
                         annotation.text = obj.text;
                         annotation.fontSize = obj.fontSize;
                         annotation.fontFamily = obj.fontFamily;
+                    } else if (obj.type === 'rect') {
+                        logMessage(`Capturing bounding box for save: ${Math.round(obj.width)}x${Math.round(obj.height)}`, 'INFO');
                     }
                     
                     return annotation;
@@ -1782,6 +1818,15 @@ function processJsonAnnotationData(jsonContent) {
         
         // Store the mouse data
         mouseData = data.mouseData || [];
+        
+        // Verify bounding box data is properly loaded
+        const boundingBoxEvents = mouseData.filter(data => data.isBoundingBox === true);
+        logMessage(`Loaded ${boundingBoxEvents.length} bounding box events from JSON file`, 'INFO');
+        if (boundingBoxEvents.length > 0) {
+            // Log a sample bounding box event
+            const sampleEvent = boundingBoxEvents[boundingBoxEvents.length - 1]; // Last event to get final state
+            logMessage(`Sample bounding box data: mode=${sampleEvent.boundingbox_mode}, coords=${JSON.stringify(sampleEvent.boxCoords || {})}`, 'INFO');
+        }
         
         // If there's audio data, try to convert it back
         if (data.audio && data.audio.dataUrl) {
@@ -2124,6 +2169,29 @@ function replayAnnotation() {
             logMessage(`Replay has ${sortedMouseData.length} mouse data points`, 'INFO');
         }
         
+        // Remove any existing annotation objects before replay
+        clearAnnotationsFromCanvas();
+        
+        // Render the static annotations (bounding boxes) if they exist in the loaded data
+        if (window.loadedAnnotationData && window.loadedAnnotationData.annotations) {
+            logMessage(`Found ${window.loadedAnnotationData.annotations.length} total annotations to process`, 'DEBUG');
+            
+            // Log details about all annotations for debugging
+            window.loadedAnnotationData.annotations.forEach((ann, idx) => {
+                logMessage(`Annotation #${idx+1}: type=${ann.type}, left=${ann.left}, top=${ann.top}, width=${ann.width}, height=${ann.height}`, 'DEBUG');
+            });
+            
+            const boundingBoxes = window.loadedAnnotationData.annotations.filter(ann => ann.type === 'rect');
+            if (boundingBoxes.length > 0) {
+                logMessage(`Found ${boundingBoxes.length} bounding box annotations to display during replay`, 'INFO');
+                addBoundingBoxesToCanvas(boundingBoxes);
+            } else {
+                logMessage('No bounding box annotations found in the saved data', 'WARN');
+            }
+        } else {
+            logMessage('No annotations data available for replay', 'WARN');
+        }
+        
         // If we have audio, play it
         if (audioBlob) {
             const audioURL = URL.createObjectURL(audioBlob);
@@ -2170,8 +2238,8 @@ function replayAnnotation() {
         // Function to pause the replay
         window.pauseReplay = function() {
             if (!isPaused && isReplaying) {
-        isPaused = true;
-        pauseStartTime = Date.now();
+                isPaused = true;
+                pauseStartTime = Date.now();
                 
                 // Pause audio if it exists
                 if (audioElement) {
@@ -2200,7 +2268,7 @@ function replayAnnotation() {
         window.resumeReplay = function() {
             if (isPaused && isReplaying) {
                 // Calculate how long we were paused
-        const pauseDuration = Date.now() - pauseStartTime;
+                const pauseDuration = Date.now() - pauseStartTime;
                 totalPausedTime += pauseDuration;
                 
                 // Adjust start time to account for pause duration
@@ -2218,7 +2286,7 @@ function replayAnnotation() {
                     animationFrameId = requestAnimationFrame(updateCursorPosition);
                 }
         
-        isPaused = false;
+                isPaused = false;
                 pauseStartTime = 0;
                 
                 logMessage('Replay resumed', 'INFO');
@@ -2285,9 +2353,28 @@ function replayAnnotation() {
                     // Get the current data point
                     const dataPoint = sortedMouseData[currentDataIndex];
                     
+                    // Special logging for bounding box events
+                    if (dataPoint.isBoundingBox === true) {
+                        logMessage(`Replaying bounding box event: type=${dataPoint.type}, mode=${dataPoint.boundingbox_mode || 'unknown'}, at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})`, 'DEBUG');
+                        
+                        // Add detailed box coordinates if they exist
+                        if (dataPoint.boxCoords) {
+                            const coords = dataPoint.boxCoords;
+                            logMessage(`Box coordinates: left=${Math.round(coords.left)}, top=${Math.round(coords.top)}, width=${Math.round(coords.width)}, height=${Math.round(coords.height)}`, 'DEBUG');
+                        } else {
+                            logMessage('No box coordinates available for this event', 'WARN');
+                        }
+                    }
+                    
                     // Log data point type for debugging (only for some points to avoid spam)
                     if (currentDataIndex % 20 === 0 || dataPoint.type !== 'move') {
-                        logMessage(`Replay at ${elapsedMs}ms: ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})${dataPoint.isLaserPointer ? ' (laser)' : ''}`, 'DEBUG');
+                        // Include flags in the debug message to make it easier to diagnose issues
+                        const flags = [];
+                        if (dataPoint.isLaserPointer) flags.push('laser');
+                        if (dataPoint.isBoundingBox) flags.push('boundingbox');
+                        const flagsStr = flags.length > 0 ? ` (${flags.join(', ')})` : '';
+                        
+                        logMessage(`Replay at ${elapsedMs}ms: ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})${flagsStr}`, 'DEBUG');
                     }
                     
                     // Update cursor position using DrawingTools
@@ -2331,6 +2418,87 @@ function replayAnnotation() {
             replayBtn.classList.add('d-none');
         }
     }
+}
+
+/**
+ * Clear all annotation objects from the canvas before replay
+ */
+function clearAnnotationsFromCanvas() {
+    if (!window.canvas) {
+        logMessage('Canvas not available for clearing annotations', 'WARN');
+        return;
+    }
+    
+    // Get all objects except the main image
+    const objects = window.canvas.getObjects();
+    const nonImageObjects = objects.filter(obj => obj.type !== 'image');
+    
+    // Remove all non-image objects
+    nonImageObjects.forEach(obj => {
+        window.canvas.remove(obj);
+    });
+    
+    window.canvas.renderAll();
+    logMessage(`Cleared ${nonImageObjects.length} annotation objects from canvas`, 'DEBUG');
+}
+
+/**
+ * Add bounding boxes to the canvas during replay
+ * @param {Array} boundingBoxes - Array of rectangle annotation objects
+ */
+function addBoundingBoxesToCanvas(boundingBoxes) {
+    if (!window.canvas) {
+        logMessage('Canvas not available for adding bounding boxes', 'ERROR');
+        return;
+    }
+    
+    if (!boundingBoxes || boundingBoxes.length === 0) {
+        logMessage('No bounding box annotations found to display', 'WARN');
+        return;
+    }
+    
+    logMessage(`Processing ${boundingBoxes.length} bounding box annotations...`, 'INFO');
+    
+    // Add each bounding box to the canvas
+    boundingBoxes.forEach((box, index) => {
+        try {
+            // Verify we have all required properties
+            if (!box.left || !box.top || !box.width || !box.height) {
+                logMessage(`Bounding box #${index+1} has invalid coordinates: ${JSON.stringify(box)}`, 'WARN');
+                return; // Skip this box
+            }
+            
+            // Create a new fabric rectangle with the saved properties
+            const rect = new fabric.Rect({
+                left: box.left,
+                top: box.top,
+                width: box.width,
+                height: box.height,
+                angle: box.angle || 0,
+                fill: box.properties && box.properties.fill ? box.properties.fill : 'rgba(0, 0, 255, 0.2)',
+                stroke: box.properties && box.properties.stroke ? box.properties.stroke : 'blue',
+                strokeWidth: box.properties && box.properties.strokeWidth ? box.properties.strokeWidth : 2,
+                selectable: true,
+                hasControls: true,
+                hasBorders: true,
+                transparentCorners: false,
+                cornerColor: 'blue',
+                cornerSize: 10,
+                cornerStyle: 'circle'
+            });
+            
+            // Add to canvas
+            window.canvas.add(rect);
+            logMessage(`Added bounding box #${index+1} to canvas: (${Math.round(box.left)}, ${Math.round(box.top)}) ${Math.round(box.width)}x${Math.round(box.height)}`, 'INFO');
+        } catch (error) {
+            logMessage(`Error adding bounding box to canvas: ${error.message}`, 'ERROR');
+            console.error('Error details:', error);
+        }
+    });
+    
+    // Render all changes
+    window.canvas.renderAll();
+    logMessage(`Added ${boundingBoxes.length} bounding boxes to canvas for replay`, 'INFO');
 }
 
 /**
