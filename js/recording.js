@@ -1106,14 +1106,57 @@ function stopCaptureMouseData() {
 }
 
 /**
+ * Helper function to determine the currently active drawing tool
+ * @returns {Object} Object containing tool information (type and mode)
+ */
+function getActiveDrawingTool(e) {
+    // Default to no tool active
+    const toolInfo = {
+        type: 'none',
+        mode: null
+    };
+    
+    // Check if DrawingTools module is available
+    if (!window.DrawingTools) {
+        return toolInfo;
+    }
+    
+    // Check if in bounding box mode
+    if (window.DrawingTools.isInBoundingBoxMode && window.DrawingTools.isInBoundingBoxMode()) {
+        toolInfo.type = 'boundingBox';
+        // Get bounding box mode if available (create/resize/move)
+        if (window.DrawingTools.getBoundingBoxMode) {
+            toolInfo.mode = window.DrawingTools.getBoundingBoxMode();
+        }
+        return toolInfo;
+    }
+    
+    // Check if laser pointer is active - only if mouse button is pressed
+    const isMouseButtonPressed = e && e.buttons === 1; // Left button pressed
+    
+    // Multiple ways to check if laser pointer is active
+    const isLaserActive = 
+        (window.showCursorTail === true || 
+        window.cursorTrailActive === true ||
+        document.body.classList.contains('laser-active') ||
+        (window.drawingTools && window.drawingTools.currentTool === 'laser' && isMouseButtonPressed));
+    
+    if (isLaserActive) {
+        toolInfo.type = 'laserPointer';
+    }
+    
+    return toolInfo;
+}
+
+/**
  * Capture mouse move event with timing
  * @param {MouseEvent} e - Mouse event
  */
 function captureMouseMove(e) {
-    if (!isRecording) {
-        // If we're not recording, don't process further
+    if (!isRecording || isPaused) {
+        // If we're not recording or paused, don't process further
         if (Math.random() < 0.001) {
-            logMessage('Mouse move ignored - not recording', 'DEBUG');
+            logMessage('Mouse move ignored - not recording or paused', 'DEBUG');
         }
         return;
     }
@@ -1125,22 +1168,13 @@ function captureMouseMove(e) {
     
     const now = Date.now();
     
-    // Check if we're in bounding box mode
-    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
-                              window.DrawingTools.isInBoundingBoxMode();
-    
-    // Get multiple ways to check if laser is active - should NOT mark as laser if in bounding box mode
-    const isLaserActive = 
-        (window.showCursorTail === true || 
-        window.cursorTrailActive === true ||
-        document.body.classList.contains('laser-active') ||
-        (window.drawingTools && window.drawingTools.currentTool === 'laser' && e.buttons === 1) || // Left button pressed
-        e.buttons === 1) && !isInBoundingBoxMode; // Only consider laser active if NOT in bounding box mode
+    // Get active drawing tool
+    const activeTool = getActiveDrawingTool(e);
     
     // Throttle mouse move events to avoid excessive data points
     // Only capture if it's been at least MOUSE_MOVE_CAPTURE_INTERVAL ms since last capture
-    // Exception: always capture if laser pointer is active (for better trail quality)
-    if (!isLaserActive && now - lastMouseMoveCapture < MOUSE_MOVE_CAPTURE_INTERVAL) {
+    // Exception: always capture if a tool is active (for better quality)
+    if (activeTool.type === 'none' && now - lastMouseMoveCapture < MOUSE_MOVE_CAPTURE_INTERVAL) {
         return;
     }
     
@@ -1175,21 +1209,40 @@ function captureMouseMove(e) {
     
     // Log what we're capturing (but not too often to avoid log spam)
     if (now % 500 < 50) { // Only log approximately every 500ms
-        const actionType = isInBoundingBoxMode ? 'bounding box move' : 'mouse move';
-        logMessage(`Capturing ${actionType}: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, laser: ${isLaserActive}`, 'DEBUG');
+        logMessage(`Capturing ${activeTool.type} move: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
     }
     
-    // Store mouse data with timestamp
-    mouseData.push({
+    // Create the base data point
+    const dataPoint = {
         type: 'move',
         x: pointer.x,
         y: pointer.y,
         timeOffset: elapsedTimeMs, // Time in ms from recording start
         realTime: now,
-        isLaserPointer: isLaserActive, // Flag if this is a laser pointer movement
-        isBoundingBox: isInBoundingBoxMode, // Flag if this is a bounding box movement
+        activeTool: activeTool.type,
         buttons: e.buttons   // Store the button state for debugging
-    });
+    };
+    
+    // Add tool-specific properties
+    if (activeTool.type === 'boundingBox') {
+        dataPoint.boundingbox_mode = activeTool.mode;
+        
+        // If DrawingTools provides box coordinates, save them
+        if (window.DrawingTools.getCurrentBoxCoords) {
+            dataPoint.boxCoords = window.DrawingTools.getCurrentBoxCoords();
+        }
+        
+        // For backward compatibility
+        dataPoint.isBoundingBox = true;
+        dataPoint.isLaserPointer = false;
+    } else if (activeTool.type === 'laserPointer') {
+        // For backward compatibility
+        dataPoint.isLaserPointer = true;
+        dataPoint.isBoundingBox = false;
+    }
+    
+    // Store mouse data with timestamp
+    mouseData.push(dataPoint);
 }
 
 /**
@@ -1197,8 +1250,8 @@ function captureMouseMove(e) {
  * @param {MouseEvent} e - Mouse event
  */
 function captureMouseDown(e) {
-    if (!isRecording) {
-        logMessage('Mouse down ignored - not recording', 'DEBUG');
+    if (!isRecording || isPaused) {
+        logMessage('Mouse down ignored - not recording or paused', 'DEBUG');
         return;
     }
     
@@ -1231,28 +1284,44 @@ function captureMouseDown(e) {
     // Get elapsed recording time
     const elapsedTimeMs = getCurrentRecordingTime();
     
-    // Check if laser pointer is active using all available methods
-    const isDrawingTools = window.drawingTools && window.drawingTools.currentTool === 'laser';
-    const isCursorTrail = window.cursorTrailEnabled === true;
-    const isLaserEnabled = isDrawingTools || isCursorTrail || e.button === 0; // Consider any left click as laser
-    
-    // Debug log laser detection details
-    logMessage(`Laser detection on mouse down - drawingTools: ${isDrawingTools}, cursorTrail: ${isCursorTrail}, button: ${e.button}`, 'DEBUG');
+    // Get active drawing tool - mousedown should update the active tool state
+    const activeTool = getActiveDrawingTool(e);
     
     // Log what we're capturing
-    logMessage(`Capturing mouse down: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}, laser: ${isLaserEnabled}`, 'INFO');
+    logMessage(`Capturing ${activeTool.type} down: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}`, 'INFO');
     
-    // Store mouse data with timestamp
-    mouseData.push({
+    // Create the base data point
+    const dataPoint = {
         type: 'down',
         button: e.button,
         x: pointer.x,
         y: pointer.y,
         timeOffset: elapsedTimeMs, // Time in ms from recording start
         realTime: Date.now(),
-        isLaserPointer: isLaserEnabled && e.button === 0, // Flag if this is a laser pointer activation
+        activeTool: activeTool.type,
         source: 'normal' // Mark the source
-    });
+    };
+    
+    // Add tool-specific properties
+    if (activeTool.type === 'boundingBox') {
+        dataPoint.boundingbox_mode = activeTool.mode;
+        
+        // Save initial box coordinates if available
+        if (window.DrawingTools && window.DrawingTools.getInitialBoxCoords) {
+            dataPoint.boxCoords = window.DrawingTools.getInitialBoxCoords();
+        }
+        
+        // For backward compatibility
+        dataPoint.isBoundingBox = true;
+        dataPoint.isLaserPointer = false;
+    } else if (activeTool.type === 'laserPointer') {
+        // For backward compatibility
+        dataPoint.isLaserPointer = true;
+        dataPoint.isBoundingBox = false;
+    }
+    
+    // Store mouse data with timestamp
+    mouseData.push(dataPoint);
     
     logMessage(`Added mouse DOWN event at coordinates (${Math.round(pointer.x)}, ${Math.round(pointer.y)}) to mouse data array`, 'DEBUG');
     logMessage(`Total mouse data points now: ${mouseData.length}`, 'DEBUG');
@@ -1263,31 +1332,96 @@ function captureMouseDown(e) {
  * @param {MouseEvent} e - Mouse event
  */
 function captureMouseUp(e) {
-    if (!isRecording) return;
+    if (!isRecording || isPaused) return;
     
     // Get canvas and position
     const canvas = window.canvas;
-    const pointer = canvas.getPointer(e);
+    
+    if (!canvas) {
+        logMessage('Canvas not available during mouse up capture', 'WARN');
+        return;
+    }
+    
+    // Get pointer coordinates
+    let pointer;
+    try {
+        pointer = canvas.getPointer(e);
+    } catch (err) {
+        // Fallback to using client coordinates
+        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
+        pointer = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+        logMessage(`Used fallback coordinates for mouse up: (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+    }
     
     // Get elapsed recording time
     const elapsedTimeMs = getCurrentRecordingTime();
     
-    // Check if cursor trail/laser pointer was active (now being deactivated)
-    const wasLaserActive = window.showCursorTail === true;
+    // Get active drawing tool - note this is tricky as the tool status
+    // may be changing on mouseup, so we need to check what was active before
+    // For this we check the last mouseDown event and preserve that tool type
+    let activeTool = getActiveDrawingTool({...e, buttons: 1}); // Pretend button is still down
+    
+    // Look at previous recorded data point to ensure consistency
+    const previousPoints = mouseData.filter(data => data.type === 'down' || data.type === 'move');
+    if (previousPoints.length > 0) {
+        const previousPoint = previousPoints[previousPoints.length - 1];
+        
+        // If previous point has a tool type, use it for consistency
+        if (previousPoint.activeTool) {
+            activeTool.type = previousPoint.activeTool;
+        } else if (previousPoint.isBoundingBox) {
+            // Legacy support
+            activeTool.type = 'boundingBox';
+        } else if (previousPoint.isLaserPointer) {
+            // Legacy support
+            activeTool.type = 'laserPointer';
+        }
+        
+        // Get the mode from previous point if it exists
+        if (previousPoint.boundingbox_mode) {
+            activeTool.mode = previousPoint.boundingbox_mode;
+        }
+    }
     
     // Log what we're capturing
-    logMessage(`Capturing mouse up: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}, laser: ${wasLaserActive}`, 'DEBUG');
+    logMessage(`Capturing ${activeTool.type} up: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}`, 'DEBUG');
     
-    // Store mouse data with timestamp
-    mouseData.push({
+    // Create the base data point
+    const dataPoint = {
         type: 'up',
         button: e.button,
         x: pointer.x,
         y: pointer.y,
         timeOffset: elapsedTimeMs, // Time in ms from recording start
         realTime: Date.now(),
-        isLaserPointer: wasLaserActive && e.button === 0 // Flag if this is ending a laser pointer session
-    });
+        activeTool: activeTool.type
+    };
+    
+    // Add tool-specific properties
+    if (activeTool.type === 'boundingBox') {
+        dataPoint.boundingbox_mode = activeTool.mode;
+        
+        // Get final box coordinates if available
+        if (window.DrawingTools && window.DrawingTools.getCurrentBoxCoords) {
+            dataPoint.boxCoords = window.DrawingTools.getCurrentBoxCoords();
+        }
+        
+        // For backward compatibility
+        dataPoint.isBoundingBox = true;
+        dataPoint.isLaserPointer = false;
+    } else if (activeTool.type === 'laserPointer') {
+        // For backward compatibility
+        dataPoint.isLaserPointer = true;
+        dataPoint.isBoundingBox = false;
+    }
+    
+    // Store mouse data with timestamp
+    mouseData.push(dataPoint);
+    
+    logMessage(`Added mouse UP event at coordinates (${Math.round(pointer.x)}, ${Math.round(pointer.y)}) to mouse data array`, 'DEBUG');
 }
 
 /**
@@ -1414,6 +1548,7 @@ function saveAnnotationData() {
         // Get current timestamp for filename
         const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
         const filename = `annotation-data-${timestamp}.json`;
+        const audioFilename = `recording-${timestamp}.mp3`;
         
         // Create a comprehensive data object
         const annotationData = {
@@ -1425,7 +1560,8 @@ function saveAnnotationData() {
             },
             audio: {
                 dataUrl: null,  // Will be populated with audio data
-                duration: 0
+                duration: 0,
+                filename: audioFilename // Reference to the separate audio file
             },
             mouseData: mouseData || [],
             annotations: []  // Will contain drawing annotations
@@ -1470,10 +1606,19 @@ function saveAnnotationData() {
                 const jsonString = JSON.stringify(annotationData, null, 2);
                 const jsonBlob = new Blob([jsonString], { type: 'application/json' });
                 
-                // Download the file
+                // Download the JSON file
                 downloadFile(jsonBlob, filename);
                 
                 logMessage(`Annotation data saved to ${filename}`, 'INFO');
+                
+                // Now save the audio file separately if it exists
+                if (audioBlob) {
+                    // Save the audio blob as a separate MP3 file
+                    downloadFile(audioBlob, audioFilename);
+                    logMessage(`Audio recording saved to ${audioFilename}`, 'INFO');
+                } else {
+                    logMessage('No audio recording available to save', 'WARN');
+                }
             })
             .catch(error => {
                 console.error('Error saving annotation data:', error);
@@ -2146,6 +2291,12 @@ function replayAnnotation() {
         // Create a replay cursor if it doesn't exist - use DrawingTools
         window.DrawingTools.createReplayCursor();
         
+        // Debug bounding box replay if the debugging function exists
+        if (window.DrawingTools.debugBoundingBoxReplay) {
+            logMessage('Running bounding box replay diagnostic...', 'INFO');
+            window.DrawingTools.debugBoundingBoxReplay();
+        }
+        
         // Variables to track replay state
         let isReplaying = true;
         let isPaused = false;
@@ -2166,11 +2317,58 @@ function replayAnnotation() {
         const sortedMouseData = [...mouseData].sort((a, b) => a.timeOffset - b.timeOffset);
         
         if (sortedMouseData.length > 0) {
-            logMessage(`Replay has ${sortedMouseData.length} mouse data points`, 'INFO');
+            // Analyze the tools used in the recording for diagnostics
+            const toolCount = {
+                laserPointer: sortedMouseData.filter(d => d.activeTool === 'laserPointer' || 
+                                               (d.activeTool === undefined && d.isLaserPointer)).length,
+                boundingBox: sortedMouseData.filter(d => d.activeTool === 'boundingBox' || 
+                                            (d.activeTool === undefined && d.isBoundingBox)).length,
+                none: sortedMouseData.filter(d => d.activeTool === 'none' || 
+                                    (d.activeTool === undefined && !d.isLaserPointer && !d.isBoundingBox)).length
+            };
+            
+            logMessage(`Replay has ${sortedMouseData.length} total mouse data points:`, 'INFO');
+            logMessage(`- Laser pointer events: ${toolCount.laserPointer}`, 'INFO');
+            logMessage(`- Bounding box events: ${toolCount.boundingBox}`, 'INFO');
+            logMessage(`- Other events: ${toolCount.none}`, 'INFO');
+            
+            // Additional logging for bounding box events to help diagnose issues
+            if (toolCount.boundingBox > 0) {
+                const boundingBoxSample = sortedMouseData.find(d => d.activeTool === 'boundingBox' || d.isBoundingBox);
+                if (boundingBoxSample) {
+                    logMessage('Sample bounding box event:', 'INFO');
+                    logMessage(JSON.stringify({
+                        type: boundingBoxSample.type,
+                        activeTool: boundingBoxSample.activeTool,
+                        isBoundingBox: boundingBoxSample.isBoundingBox,
+                        hasCoords: !!boundingBoxSample.boxCoords,
+                        mode: boundingBoxSample.boundingbox_mode
+                    }), 'INFO');
+                }
+            }
         }
-        
-        // Remove any existing annotation objects before replay
-        clearAnnotationsFromCanvas();
+
+        // IMPORTANT: Only clear non-bounding box annotations before replay
+        // Don't remove all annotations as we might want to see some boxes during replay
+        if (window.canvas) {
+            logMessage('Selectively clearing annotations before replay...', 'INFO');
+            
+            // Get all objects except the main image and bounding boxes
+            const objects = window.canvas.getObjects();
+            const objectsToRemove = objects.filter(obj => 
+                obj.type !== 'image' && 
+                // Keep any rectangles that might be bounding boxes
+                !(obj.type === 'rect' && obj.stroke === 'blue' && obj.fill && obj.fill.includes('rgba(0, 0, 255'))
+            );
+            
+            // Remove only non-bounding box objects
+            objectsToRemove.forEach(obj => {
+                window.canvas.remove(obj);
+            });
+            
+            window.canvas.renderAll();
+            logMessage(`Cleared ${objectsToRemove.length} non-bounding box objects before replay`, 'DEBUG');
+        }
         
         // Render the static annotations (bounding boxes) if they exist in the loaded data
         if (window.loadedAnnotationData && window.loadedAnnotationData.annotations) {
@@ -2219,7 +2417,7 @@ function replayAnnotation() {
                 if (animationFrameId) {
                     cancelAnimationFrame(animationFrameId);
                 }
-                window.DrawingTools.hideReplayCursor();
+                window.DrawingTools.hideReplayCursor(true); // Specify full cleanup (true)
                 URL.revokeObjectURL(audioURL);
                 
                 // Ensure replay button is reset
@@ -2326,8 +2524,8 @@ function replayAnnotation() {
                 animationFrameId = null;
             }
             
-            // Hide cursor and cleanup
-            window.DrawingTools.hideReplayCursor();
+            // Hide cursor and cleanup - specify this is a complete stop (true)
+            window.DrawingTools.hideReplayCursor(true);
             
             logMessage('Replay stopped by user', 'INFO');
             
@@ -2353,28 +2551,33 @@ function replayAnnotation() {
                     // Get the current data point
                     const dataPoint = sortedMouseData[currentDataIndex];
                     
-                    // Special logging for bounding box events
-                    if (dataPoint.isBoundingBox === true) {
-                        logMessage(`Replaying bounding box event: type=${dataPoint.type}, mode=${dataPoint.boundingbox_mode || 'unknown'}, at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})`, 'DEBUG');
-                        
-                        // Add detailed box coordinates if they exist
-                        if (dataPoint.boxCoords) {
-                            const coords = dataPoint.boxCoords;
-                            logMessage(`Box coordinates: left=${Math.round(coords.left)}, top=${Math.round(coords.top)}, width=${Math.round(coords.width)}, height=${Math.round(coords.height)}`, 'DEBUG');
+                    // Normalize activeTool property (support both new and legacy formats)
+                    if (!dataPoint.activeTool) {
+                        // Handle legacy data format
+                        if (dataPoint.isBoundingBox) {
+                            dataPoint.activeTool = 'boundingBox';
+                        } else if (dataPoint.isLaserPointer) {
+                            dataPoint.activeTool = 'laserPointer';
                         } else {
-                            logMessage('No box coordinates available for this event', 'WARN');
+                            dataPoint.activeTool = 'none';
                         }
                     }
                     
-                    // Log data point type for debugging (only for some points to avoid spam)
-                    if (currentDataIndex % 20 === 0 || dataPoint.type !== 'move') {
-                        // Include flags in the debug message to make it easier to diagnose issues
-                        const flags = [];
-                        if (dataPoint.isLaserPointer) flags.push('laser');
-                        if (dataPoint.isBoundingBox) flags.push('boundingbox');
-                        const flagsStr = flags.length > 0 ? ` (${flags.join(', ')})` : '';
-                        
-                        logMessage(`Replay at ${elapsedMs}ms: ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})${flagsStr}`, 'DEBUG');
+                    // Tool-specific logging
+                    if (dataPoint.activeTool === 'boundingBox') {
+                        if (dataPoint.type !== 'move' || Math.random() < 0.05) { // Log move events occasionally
+                            logMessage(`Replaying bounding box ${dataPoint.type}: mode=${dataPoint.boundingbox_mode || 'unknown'}, at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})`, 'DEBUG');
+                            
+                            // Add detailed box coordinates if they exist
+                            if (dataPoint.boxCoords) {
+                                const coords = dataPoint.boxCoords;
+                                logMessage(`Box: left=${Math.round(coords.left)}, top=${Math.round(coords.top)}, width=${Math.round(coords.width)}, height=${Math.round(coords.height)}`, 'DEBUG');
+                            }
+                        }
+                    } else if (dataPoint.activeTool === 'laserPointer') {
+                        if (dataPoint.type !== 'move' || Math.random() < 0.01) {
+                            logMessage(`Replaying laser ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})`, 'DEBUG');
+                        }
                     }
                     
                     // Update cursor position using DrawingTools
@@ -2658,44 +2861,72 @@ function updateReplayCursor(dataPoint) {
     cursor.style.left = `${x}px`;
     cursor.style.top = `${y}px`;
     
-    // Enhanced debugging for laser pointer events
-    if (dataPoint.isLaserPointer === true) {
-        if (dataPoint.type !== 'move') {
-            logMessage(`Laser pointer ${dataPoint.type} event at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
-        }
+    // Determine the active tool (using the new activeTool property or legacy properties)
+    const activeTool = dataPoint.activeTool || 
+                      (dataPoint.isBoundingBox ? 'boundingBox' : 
+                       (dataPoint.isLaserPointer ? 'laserPointer' : 'none'));
+    
+    // Enhanced debugging for events
+    if (activeTool !== 'none' && dataPoint.type !== 'move') {
+        logMessage(`${activeTool} ${dataPoint.type} event at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
     }
     
-    // Show cursor events 
+    // Handle different tool behaviors
     if (dataPoint.type === 'down') {
         // Mouse down - make cursor larger and more opaque
         cursor.style.width = `${largerSize}px`;
         cursor.style.height = `${largerSize}px`;
-        cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
         
-        // If this is a laser pointer activation, start drawing the trail
-        if (dataPoint.isLaserPointer) {
+        // Set cursor appearance based on tool
+        if (activeTool === 'laserPointer') {
+            cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
             logMessage(`Starting laser trail at DOWN event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
             startLaserTrail();
+        } else if (activeTool === 'boundingBox') {
+            cursor.style.backgroundColor = 'rgba(0, 100, 255, 0.6)';
+            logMessage(`Bounding box operation started: mode=${dataPoint.boundingbox_mode || 'unknown'}`, 'DEBUG');
+            
+            // Display starting box coordinates if available
+            if (dataPoint.boxCoords) {
+                logMessage(`Initial box: left=${Math.round(dataPoint.boxCoords.left)}, top=${Math.round(dataPoint.boxCoords.top)}`, 'DEBUG');
+            }
+        } else {
+            cursor.style.backgroundColor = 'rgba(128, 128, 128, 0.5)'; // Default gray
         }
     } else if (dataPoint.type === 'up') {
-        // Mouse up - return to normal
+        // Mouse up - return to normal size
         cursor.style.width = `${cursorSize}px`;
         cursor.style.height = `${cursorSize}px`;
-        cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+        cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.5)'; // Reset to default
         
-        // If this is a laser pointer deactivation, clear the trail
-        if (dataPoint.isLaserPointer) {
+        // Tool-specific actions
+        if (activeTool === 'laserPointer') {
             logMessage(`Clearing laser trail at UP event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
             clearLaserTrail();
+        } else if (activeTool === 'boundingBox') {
+            logMessage(`Bounding box operation completed: mode=${dataPoint.boundingbox_mode || 'unknown'}`, 'DEBUG');
+            
+            // Display final box coordinates if available
+            if (dataPoint.boxCoords) {
+                const coords = dataPoint.boxCoords;
+                logMessage(`Final box: left=${Math.round(coords.left)}, top=${Math.round(coords.top)}, width=${Math.round(coords.width)}, height=${Math.round(coords.height)}`, 'DEBUG');
+            }
         }
-    } else if (dataPoint.type === 'move' && dataPoint.isLaserPointer) {
-        // Log only occasionally to avoid flooding
-        if (Math.random() < 0.05) {
-            logMessage(`Adding to laser trail at MOVE event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
+    } else if (dataPoint.type === 'move') {
+        // Handle move events differently based on tool
+        if (activeTool === 'laserPointer') {
+            // Log only occasionally to avoid flooding
+            if (Math.random() < 0.05) {
+                logMessage(`Adding to laser trail at MOVE event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
+            }
+            addToLaserTrail(x, y);
+        } else if (activeTool === 'boundingBox' && dataPoint.boxCoords) {
+            // For bounding box moves, could update a live preview if needed
+            if (Math.random() < 0.05) {
+                const coords = dataPoint.boxCoords;
+                logMessage(`Box update: ${Math.round(coords.width)}x${Math.round(coords.height)}`, 'DEBUG');
+            }
         }
-        
-        // If this is a laser pointer movement, add to the trail
-        addToLaserTrail(x, y);
     }
     
     // Update coordinates display

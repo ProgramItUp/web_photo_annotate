@@ -258,7 +258,8 @@ function createReplayCursor() {
  * @param {Object} dataPoint - Mouse data point with bounding box info
  */
 function handleBoundingBoxReplay(dataPoint) {
-    if (!dataPoint || dataPoint.isBoundingBox !== true) {
+    // Check for both legacy isBoundingBox property and new activeTool property
+    if (!dataPoint || (dataPoint.isBoundingBox !== true && dataPoint.activeTool !== 'boundingBox')) {
         return false; // Not a bounding box event
     }
     
@@ -269,6 +270,7 @@ function handleBoundingBoxReplay(dataPoint) {
         // Additional detailed logging for diagnosis
         const details = {
             isBoundingBox: dataPoint.isBoundingBox,
+            activeTool: dataPoint.activeTool,
             type: dataPoint.type,
             mode: dataPoint.boundingbox_mode,
             hasCoords: !!dataPoint.boxCoords,
@@ -323,8 +325,11 @@ function handleBoundingBoxReplay(dataPoint) {
  * @param {Object} dataPoint - Mouse data point with x, y coordinates
  */
 function updateReplayCursor(dataPoint) {
+    // Check for both the legacy isBoundingBox property and the new activeTool property
+    const isBoundingBoxEvent = dataPoint.isBoundingBox === true || dataPoint.activeTool === 'boundingBox';
+    
     // First, check if this is a bounding box event and handle it with the dedicated function
-    if (dataPoint.isBoundingBox === true) {
+    if (isBoundingBoxEvent) {
         const handled = handleBoundingBoxReplay(dataPoint);
         if (handled) {
             // If it was handled by the bounding box handler, just update the cursor visual
@@ -381,9 +386,12 @@ function updateReplayCursor(dataPoint) {
     cursor.style.left = `${x}px`;
     cursor.style.top = `${y}px`;
     
+    // Check if this is a laser pointer event (using both legacy and new properties)
+    const isLaserPointerEvent = dataPoint.isLaserPointer === true || dataPoint.activeTool === 'laserPointer';
+    
     // Make sure we don't process bounding box events as laser pointer events
     // This explicit check helps prevent any bugs where both flags might be set
-    if (dataPoint.isBoundingBox === true) {
+    if (isBoundingBoxEvent) {
         // Skip laser pointer processing for bounding box events
         if (typeof logMessage === 'function' && Math.random() < 0.01) {
             logMessage(`Skipping laser pointer processing for bounding box event: ${dataPoint.type}`, 'DEBUG');
@@ -392,7 +400,7 @@ function updateReplayCursor(dataPoint) {
     }
     
     // Handle laser pointer replay (existing code)
-    if (dataPoint.isLaserPointer === true) {
+    if (isLaserPointerEvent) {
         if (dataPoint.type !== 'move') {
             if (typeof logMessage === 'function') {
                 logMessage(`Laser pointer ${dataPoint.type} event at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
@@ -408,7 +416,7 @@ function updateReplayCursor(dataPoint) {
         cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
         
         // If this is a laser pointer activation, start drawing the trail
-        if (dataPoint.isLaserPointer) {
+        if (isLaserPointerEvent) {
             if (typeof logMessage === 'function') {
                 logMessage(`Starting laser trail at DOWN event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
             }
@@ -421,13 +429,13 @@ function updateReplayCursor(dataPoint) {
         cursor.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
         
         // If this is a laser pointer deactivation, clear the trail
-        if (dataPoint.isLaserPointer) {
+        if (isLaserPointerEvent) {
             if (typeof logMessage === 'function') {
                 logMessage(`Clearing laser trail at UP event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
             }
             clearLaserTrail();
         }
-    } else if (dataPoint.type === 'move' && dataPoint.isLaserPointer) {
+    } else if (dataPoint.type === 'move' && isLaserPointerEvent) {
         // Log only occasionally to avoid flooding
         if (Math.random() < 0.05 && typeof logMessage === 'function') {
             logMessage(`Adding to laser trail at MOVE event: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
@@ -449,6 +457,18 @@ function updateReplayCursor(dataPoint) {
  */
 function startReplayBoundingBox(x, y, mode) {
     try {
+        // Validate mode parameter
+        if (!mode) {
+            mode = 'corners'; // Default mode if not specified
+            if (typeof logMessage === 'function') {
+                logMessage('No bounding box mode specified, using default "corners" mode', 'WARN');
+            }
+        }
+        
+        if (typeof logMessage === 'function') {
+            logMessage(`Starting replay bounding box: mode=${mode}, pos=(${Math.round(x)}, ${Math.round(y)})`, 'INFO');
+        }
+        
         // Remove any existing replay bounding box
         removeReplayBoundingBox();
         
@@ -456,7 +476,7 @@ function startReplayBoundingBox(x, y, mode) {
             if (typeof logMessage === 'function') {
                 logMessage('Cannot create replay bounding box: Canvas not available', 'ERROR');
             }
-            return;
+            return false;
         }
         
         // Validate coordinates
@@ -464,29 +484,38 @@ function startReplayBoundingBox(x, y, mode) {
             if (typeof logMessage === 'function') {
                 logMessage(`Invalid coordinates for replay bounding box: x=${x}, y=${y}`, 'ERROR');
             }
-            return;
+            return false;
         }
         
-        // Create a new bounding box for replay
+        // Create a new bounding box for replay with more visible styling
         window.replayBoundingBox = new fabric.Rect({
             left: x,
             top: y,
-            width: 0,
-            height: 0,
-            fill: 'rgba(0, 0, 255, 0.2)',
+            width: 1, // Start with 1px width to ensure visibility
+            height: 1, // Start with 1px height to ensure visibility
+            fill: 'rgba(0, 0, 255, 0.3)', // More visible blue fill
             stroke: 'blue',
-            strokeWidth: 2,
+            strokeWidth: 3, // Thicker stroke
             selectable: true,
             hasControls: true,
             hasBorders: true,
             transparentCorners: false,
             cornerColor: 'blue',
             cornerSize: 10,
-            cornerStyle: 'circle'
+            cornerStyle: 'circle',
+            // Additional properties to ensure visibility and persistence
+            evented: false, // Don't allow events to interfere with replay
+            objectCaching: false, // Don't cache to ensure updates are visible
+            excludeFromExport: true // Don't include in exports
         });
         
-        // Add to canvas
+        // Add to canvas and ensure it's on top
         window.canvas.add(window.replayBoundingBox);
+        window.canvas.bringToFront(window.replayBoundingBox);
+        window.canvas.renderAll(); // Ensure it's rendered immediately
+        
+        // Set a flag to prevent accidental removal during replay
+        window.replayBoundingBox.isReplayBox = true;
         
         if (typeof logMessage === 'function') {
             logMessage(`Created replay bounding box in ${mode} mode at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
@@ -524,31 +553,45 @@ function updateReplayBoundingBox(coords, mode) {
             return false;
         }
         
+        // Make sure width and height are not negative
+        const width = Math.max(1, coords.width); // Minimum width of 1 to ensure visibility
+        const height = Math.max(1, coords.height); // Minimum height of 1 to ensure visibility
+        
         // Create if it doesn't exist
         if (!window.replayBoundingBox) {
+            if (typeof logMessage === 'function') {
+                logMessage(`Creating new bounding box during update: ${Math.round(width)}x${Math.round(height)}`, 'INFO');
+            }
+            
             window.replayBoundingBox = new fabric.Rect({
                 left: coords.left,
                 top: coords.top,
-                width: coords.width,
-                height: coords.height,
-                fill: 'rgba(0, 0, 255, 0.2)',
+                width: width,
+                height: height,
+                fill: 'rgba(0, 0, 255, 0.3)', // More visible blue fill
                 stroke: 'blue',
-                strokeWidth: 2,
+                strokeWidth: 3, // Thicker stroke for visibility
                 selectable: true,
                 hasControls: true,
                 hasBorders: true,
                 transparentCorners: false,
                 cornerColor: 'blue',
                 cornerSize: 10,
-                cornerStyle: 'circle'
+                cornerStyle: 'circle',
+                evented: false, // Don't allow events to interfere with replay
+                objectCaching: false // Don't cache to ensure updates are visible
             });
+            
+            // Set a flag to prevent accidental removal during replay
+            window.replayBoundingBox.isReplayBox = true;
             
             // Add to canvas
             if (window.canvas) {
                 window.canvas.add(window.replayBoundingBox);
+                window.canvas.bringToFront(window.replayBoundingBox);
                 
                 if (typeof logMessage === 'function') {
-                    logMessage(`Created new replay bounding box with dimensions: ${Math.round(coords.width)}x${Math.round(coords.height)}`, 'DEBUG');
+                    logMessage(`Created new replay bounding box with dimensions: ${Math.round(width)}x${Math.round(height)}`, 'DEBUG');
                 }
             } else {
                 if (typeof logMessage === 'function') {
@@ -561,19 +604,30 @@ function updateReplayBoundingBox(coords, mode) {
             window.replayBoundingBox.set({
                 left: coords.left,
                 top: coords.top,
-                width: coords.width,
-                height: coords.height
+                width: width,
+                height: height
             });
             
             // Occasionally log the update
             if (Math.random() < 0.05 && typeof logMessage === 'function') {
-                logMessage(`Updated replay bounding box to: ${Math.round(coords.width)}x${Math.round(coords.height)}`, 'DEBUG');
+                logMessage(`Updated replay bounding box to: ${Math.round(width)}x${Math.round(height)}`, 'DEBUG');
             }
         }
         
         // Refresh the canvas
         if (window.canvas) {
+            // Always bring box to front to ensure visibility
+            window.canvas.bringToFront(window.replayBoundingBox);
             window.canvas.renderAll();
+            
+            // Force the box to be visible
+            if (window.replayBoundingBox && !window.replayBoundingBox.visible) {
+                window.replayBoundingBox.visible = true;
+                if (typeof logMessage === 'function') {
+                    logMessage('Forced bounding box visibility', 'DEBUG');
+                }
+            }
+            
             return true;
         } else {
             if (typeof logMessage === 'function') {
@@ -616,8 +670,10 @@ function removeReplayBoundingBox() {
 
 /**
  * Hide the replay cursor
+ * Only when replay is complete, not during replay
+ * @param {boolean} isComplete - Whether the replay is complete (default: true)
  */
-function hideReplayCursor() {
+function hideReplayCursor(isComplete = true) {
     const cursor = document.getElementById('replay-cursor');
     if (cursor) {
         cursor.style.display = 'none';
@@ -632,20 +688,33 @@ function hideReplayCursor() {
         trailContainer.style.display = 'none';
     }
     
-    // Remove any replay bounding box
-    removeReplayBoundingBox();
+    // Only remove bounding box and clear annotations if replay is complete
+    if (isComplete) {
+        // Log that we're doing final cleanup
+        if (typeof logMessage === 'function') {
+            logMessage('Replay complete - performing final cleanup', 'INFO');
+        }
+        
+        // Remove any replay bounding box
+        removeReplayBoundingBox();
+        
+        // Clean up any bounding boxes from annotations if needed
+        if (typeof window.clearAnnotationsFromCanvas === 'function') {
+            // Only run if we're not in recording mode (to avoid clearing during recording)
+            if (typeof window.isRecording === 'function' && !window.isRecording()) {
+                window.clearAnnotationsFromCanvas();
+                logMessage('Cleared annotation objects after replay ended', 'DEBUG');
+            }
+        }
+    } else {
+        // During replay, just log that we're hiding cursor temporarily
+        if (typeof logMessage === 'function' && cursor) {
+            logMessage('Temporarily hiding replay cursor', 'DEBUG');
+        }
+    }
     
     // Reset coordinates display
     updateCoordinatesDisplay(0, 0);
-    
-    // Clean up any bounding boxes from annotations if needed
-    if (typeof window.clearAnnotationsFromCanvas === 'function') {
-        // Only run if we're not in recording mode (to avoid clearing during recording)
-        if (typeof window.isRecording === 'function' && !window.isRecording()) {
-            window.clearAnnotationsFromCanvas();
-            logMessage('Cleared annotation objects after replay ended', 'DEBUG');
-        }
-    }
 }
 
 /**
@@ -1365,6 +1434,128 @@ function isInBoundingBoxMode() {
     return boundingBoxActive;
 }
 
+/**
+ * Get the current bounding box mode (corners or pointer)
+ * @returns {string} The current bounding box mode
+ */
+function getBoundingBoxMode() {
+    return boundingbox_mode;
+}
+
+/**
+ * Get the initial coordinates for a new bounding box
+ * Used when starting to draw a new box
+ * @returns {Object|null} Initial box coordinates or null if not available
+ */
+function getInitialBoxCoords() {
+    if (!boundingBoxStartPoint) {
+        return null;
+    }
+    
+    return {
+        left: boundingBoxStartPoint.x,
+        top: boundingBoxStartPoint.y,
+        width: 0,
+        height: 0
+    };
+}
+
+/**
+ * Get the current coordinates of the active bounding box
+ * @returns {Object|null} Current box coordinates or null if no active box
+ */
+function getCurrentBoxCoords() {
+    // First try the current box being drawn
+    if (currentBoundingBox) {
+        return {
+            left: currentBoundingBox.left,
+            top: currentBoundingBox.top,
+            width: currentBoundingBox.width || 0,
+            height: currentBoundingBox.height || 0
+        };
+    }
+    
+    // Then try the completed active box
+    if (activeBoundingBox) {
+        return {
+            left: activeBoundingBox.left,
+            top: activeBoundingBox.top,
+            width: activeBoundingBox.width || 0,
+            height: activeBoundingBox.height || 0
+        };
+    }
+    
+    // If we're in pointer mode with min/max values
+    if (boundingbox_mode === 'pointer' && minX !== undefined && maxX !== undefined) {
+        const width = maxX - minX;
+        const height = maxY - minY;
+        
+        return {
+            left: minX,
+            top: minY,
+            width: width > 0 ? width : 0,
+            height: height > 0 ? height : 0
+        };
+    }
+    
+    return null;
+}
+
+/**
+ * Debug function to verify bounding box replay status
+ * Will log information about current replay status
+ */
+function debugBoundingBoxReplay() {
+    // Log general debug info
+    if (typeof logMessage === 'function') {
+        logMessage('--- BOUNDING BOX REPLAY DEBUG ---', 'INFO');
+        logMessage(`Bounding box mode active: ${boundingBoxActive}`, 'INFO');
+        logMessage(`Current mode: ${boundingbox_mode}`, 'INFO');
+        
+        // Check if we have a replay bounding box
+        if (window.replayBoundingBox) {
+            const box = window.replayBoundingBox;
+            logMessage(`Replay bounding box exists: left=${Math.round(box.left)}, top=${Math.round(box.top)}, width=${Math.round(box.width)}, height=${Math.round(box.height)}`, 'INFO');
+        } else {
+            logMessage('No replay bounding box currently exists', 'WARN');
+        }
+        
+        // Check canvas
+        if (window.canvas) {
+            const objects = window.canvas.getObjects();
+            const boundingBoxes = objects.filter(obj => obj.type === 'rect');
+            logMessage(`Canvas has ${objects.length} objects (${boundingBoxes.length} rectangles)`, 'INFO');
+            
+            // List all rectangles
+            boundingBoxes.forEach((box, index) => {
+                logMessage(`Rectangle #${index+1}: left=${Math.round(box.left)}, top=${Math.round(box.top)}, width=${Math.round(box.width)}, height=${Math.round(box.height)}`, 'INFO');
+            });
+        } else {
+            logMessage('Canvas not available', 'ERROR');
+        }
+        
+        logMessage('--- END DEBUG INFO ---', 'INFO');
+    }
+    
+    // Create a test bounding box if requested and none exists
+    if (!window.replayBoundingBox && window.canvas) {
+        logMessage('Creating a test bounding box for debugging', 'INFO');
+        const testBox = new fabric.Rect({
+            left: 100,
+            top: 100,
+            width: 200,
+            height: 150,
+            fill: 'rgba(255, 0, 0, 0.2)',
+            stroke: 'red',
+            strokeWidth: 3
+        });
+        
+        window.canvas.add(testBox);
+        window.canvas.renderAll();
+        logMessage('Test bounding box created - if you see a red rectangle, canvas rendering is working', 'INFO');
+    }
+}
+
 // Export functions for use in recording.js
 window.DrawingTools = {
     showLaserPointerNotification,
@@ -1386,5 +1577,9 @@ window.DrawingTools = {
     updateReplayBoundingBox,
     removeReplayBoundingBox,
     handleBoundingBoxReplay,
-    isInBoundingBoxMode  // Export the new function
+    isInBoundingBoxMode,  // Export the new function
+    getBoundingBoxMode,   // Export the new function
+    getInitialBoxCoords,  // Export the new function
+    getCurrentBoxCoords,  // Export the new function
+    debugBoundingBoxReplay // Export debug function
 }; 
