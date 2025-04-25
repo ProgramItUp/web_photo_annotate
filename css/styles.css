@@ -1,3 +1,157 @@
+/**
+ * Styles for the Image Annotation Tool
+ */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Image container and image */
+.image-container {
+    display: inline-block;
+    position: relative;
+    overflow: auto;
+    max-height: 80vh;
+    border: 1px solid #ccc;
+    background: #222;
+    user-select: none;
+}
+
+.main-image {
+    display: block;
+    transform-origin: top left;
+}
+
+/* Coordinates display */
+.coordinates-display {
+    font-family: monospace;
+    padding: 5px;
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    margin-top: 5px;
+}
+
+/* Control panels */
+.controls-panel {
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: #f8f9fa;
+}
+
+.controls-panel h6 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #495057;
+    font-weight: 600;
+}
+
+/* Recording controls */
+.recording-indicator {
+    color: #666;
+    font-size: 0.9rem;
+    display: none;
+}
+
+.recording-indicator.recording {
+    display: inline-block;
+    color: #dc3545;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Volume meter */
+.audio-volume-meter {
+    height: 10px;
+    background-color: #eee;
+    border-radius: 5px;
+    overflow: hidden;
+    margin: 5px 0;
+}
+
+.volume-level {
+    height: 100%;
+    background-color: #28a745;
+    width: 0%;
+    transition: width 0.1s ease;
+}
+
+/* Laser pointer */
+.laser-point {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 100;
+    transition: opacity 0.1s linear;
+}
+
+/* Bounding box canvas */
+.bounding-box-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 50;
+}
+
+/* Tool mode buttons */
+.btn-group-sm {
+    margin-left: 5px;
+}
+
+/* Image column - remove Bootstrap padding */
+.image-column {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Custom scrollbar for image container */
+.image-container::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.image-container::-webkit-scrollbar-track {
+    background: #333;
+}
+
+.image-container::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 5px;
+}
+
+.image-container::-webkit-scrollbar-thumb:hover {
+    background: #888;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .image-container {
+        max-height: 60vh;
+    }
+    
+    .controls-panel {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+}
+
+/* Cursor styles */
+.laser-pointer-active {
+    cursor: none;
+}
+
+.bounding-box-active {
+    cursor: crosshair;
+}
+
 /* Canvas and container styles */
 .canvas-container {
     position: relative;
@@ -37,18 +191,6 @@
 .btn-group-vertical .btn {
     margin-bottom: 2px;
     text-align: left;
-}
-
-/* Coordinates display */
-.coordinates-display {
-    font-family: monospace;
-    padding: 5px 8px;
-    background-color: #f1f1f1;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    font-weight: bold;
-    border: 1px solid #ddd;
-    color: #333;
 }
 
 /* Recording indicator styles */
