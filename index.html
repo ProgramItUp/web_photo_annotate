@@ -30,6 +30,45 @@
     <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
     <!-- Critical initialization script - load without defer to ensure functions are available -->
     <script src="js/canvas.js"></script>
+    <style>
+        .image-container {
+            display: inline-block;
+            position: relative;
+            overflow: auto;
+            max-height: 80vh;
+            border: 1px solid #ccc;
+            background: #222;
+        }
+        .main-image {
+            display: block;
+            /* No scaling applied - critical for accurate coordinates */
+        }
+        .coordinates-display {
+            font-family: monospace;
+            padding: 5px;
+            background-color: #f8f9fa;
+        }
+        .controls-panel {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+        .annotation-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: red;
+            pointer-events: none;
+        }
+        /* Remove bootstrap padding from image column to fix coordinate calculations */
+        .image-column {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+    </style>
 </head>
 <body>
     <div class="container-fluid">
@@ -143,31 +182,12 @@
                 </div>
             </div>
             
-            <!-- Right side with Canvas -->
-            <div class="col-md-9">
-                <div class="canvas-container" id="image-container">
-                    <canvas id="canvas"></canvas>
+            <!-- Right side with Image -->
+            <div class="col-md-9 image-column">
+                <div class="image-container" id="image-container">
+                    <img id="main-image" class="main-image" src="calibration_image_800x800.png" alt="Calibration" />
                 </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="coordinates-display" id="coordinates">Mouse: X: 0, Y: 0</div>
-                    <div class="alert alert-info p-1 m-0 small">
-                        <span><strong>Cursor trail:</strong> Hold left-click to activate | <strong>Laser pointer:</strong> Enable in Drawing Tools</span>
-                    </div>
-                </div>
-                
-                <!-- Log Area -->
-                <div class="card">
-                    <div class="card-header py-1 d-flex justify-content-between align-items-center">
-                        <span class="small">Log Messages</span>
-                        <div>
-                            <button class="btn btn-sm btn-outline-primary py-0 me-1" id="copy-log">Copy</button>
-                            <button class="btn btn-sm btn-outline-secondary py-0" id="clear-log">Clear</button>
-                        </div>
-                    </div>
-                    <div class="card-body p-1">
-                        <textarea id="log-area" class="form-control" rows="4" readonly style="font-family: monospace; font-size: 0.8rem;"></textarea>
-                    </div>
-                </div>
+                <div class="coordinates-display mt-2" id="coordinates">Mouse: X: 0, Y: 0</div>
             </div>
         </div>
     </div>

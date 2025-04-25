@@ -102,7 +102,28 @@ function getImagePixelCoordinates(event) {
     // Get the bounding rectangle of the image
     const rect = img.getBoundingClientRect();
     
-    // Calculate mouse position relative to the image
+    // Debug container dimensions and offsets
+    const container = document.getElementById('image-container');
+    const containerRect = container.getBoundingClientRect();
+    console.log('Container rect:', {
+        width: containerRect.width,
+        height: containerRect.height,
+        left: containerRect.left,
+        top: containerRect.top
+    });
+    console.log('Image rect:', {
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top
+    });
+    
+    // Calculate offset of image within container (due to Bootstrap padding)
+    const offsetX = rect.left - containerRect.left;
+    const offsetY = rect.top - containerRect.top;
+    console.log(`Image offset within container: ${offsetX}px, ${offsetY}px`);
+    
+    // Calculate mouse position relative to the image, accounting for zoom
     const x = Math.floor((event.clientX - rect.left) / zoomFactor);
     const y = Math.floor((event.clientY - rect.top) / zoomFactor);
     
