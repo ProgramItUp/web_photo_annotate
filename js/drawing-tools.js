@@ -833,11 +833,14 @@ function handleBoundingBoxMouseDown(event) {
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
     
+    // Convert canvas coordinates to image pixel coordinates for recording
+    const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
+    
     // In pointer mode, capture start of drag and initialize min/max values
     if (boundingbox_mode === 'pointer') {
         pointerDragging = true;
         
-        // Initialize min/max with starting point
+        // Initialize min/max with starting point (using canvas coordinates for display)
         minX = maxX = pointer.x;
         minY = maxY = pointer.y;
         
@@ -865,24 +868,27 @@ function handleBoundingBoxMouseDown(event) {
         }
         
         if (typeof logMessage === 'function') {
-            logMessage(`Pointer mode: Started tracking at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+            logMessage(`Pointer mode: Started tracking at (${Math.round(imageCoords.x)}, ${Math.round(imageCoords.y)})`, 'DEBUG');
         }
         
         // Capture the event for recording if recording is active
         if (typeof window.captureMouseDownDirect === 'function') {
+            // Convert box coordinates to image space
+            const imageBoxCoords = {
+                left: imageCoords.x,
+                top: imageCoords.y,
+                width: 0,
+                height: 0
+            };
+            
             const boxData = {
                 isBoundingBox: true,
                 boundingbox_mode: boundingbox_mode,
-                // Initial empty box coordinates
-                boxCoords: {
-                    left: pointer.x,
-                    top: pointer.y,
-                    width: 0,
-                    height: 0
-                }
+                // Send image coordinates for recording
+                boxCoords: imageBoxCoords
             };
             
-            window.captureMouseDownDirect(pointer.x, pointer.y, 0, boxData);
+            window.captureMouseDownDirect(imageCoords.x, imageCoords.y, 0, boxData);
             
             if (typeof logMessage === 'function') {
                 logMessage(`Sent bounding box DOWN event to recording system: mode=${boundingbox_mode}`, 'DEBUG');
@@ -898,7 +904,7 @@ function handleBoundingBoxMouseDown(event) {
     // Remove any existing bounding box before creating a new one
     removeExistingBoundingBox();
     
-    // Store the starting point
+    // Store the starting point (using canvas coordinates for display)
     boundingBoxStartPoint = {
         x: pointer.x,
         y: pointer.y
@@ -933,24 +939,27 @@ function handleBoundingBoxMouseDown(event) {
     window.canvas.add(currentBoundingBox);
     
     if (typeof logMessage === 'function') {
-        logMessage(`Started drawing bounding box at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+        logMessage(`Started drawing bounding box at (${Math.round(imageCoords.x)}, ${Math.round(imageCoords.y)})`, 'DEBUG');
     }
     
     // Capture the event for recording if recording is active
     if (typeof window.captureMouseDownDirect === 'function') {
+        // Convert box coordinates to image space
+        const imageBoxCoords = {
+            left: imageCoords.x,
+            top: imageCoords.y,
+            width: 0,
+            height: 0
+        };
+        
         const boxData = {
             isBoundingBox: true,
             boundingbox_mode: boundingbox_mode,
-            // Include initial empty box coordinates for consistency
-            boxCoords: {
-                left: pointer.x,
-                top: pointer.y,
-                width: 0,
-                height: 0
-            }
+            // Send image coordinates for recording
+            boxCoords: imageBoxCoords
         };
         
-        window.captureMouseDownDirect(pointer.x, pointer.y, 0, boxData);
+        window.captureMouseDownDirect(imageCoords.x, imageCoords.y, 0, boxData);
         
         if (typeof logMessage === 'function') {
             logMessage(`Sent bounding box DOWN event to recording system: mode=${boundingbox_mode}`, 'DEBUG');
@@ -968,9 +977,12 @@ function handleBoundingBoxMouseMove(event) {
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
     
+    // Convert canvas coordinates to image pixel coordinates for recording
+    const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
+    
     // In pointer mode, update min/max coordinates and bounding box
     if (boundingbox_mode === 'pointer' && pointerDragging) {
-        // Update min/max values based on current pointer position
+        // Update min/max values based on current pointer position (canvas coordinates for display)
         minX = Math.min(minX, pointer.x);
         maxX = Math.max(maxX, pointer.x);
         minY = Math.min(minY, pointer.y);
@@ -989,25 +1001,34 @@ function handleBoundingBoxMouseMove(event) {
             window.canvas.renderAll();
         }
         
-        // Update coordinates display
-        updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
+        // Update coordinates display (using image coordinates)
+        updateCoordinatesDisplay(Math.round(imageCoords.x), Math.round(imageCoords.y));
         
         // Occasionally log the current min/max values
         if (Math.random() < 0.05 && typeof logMessage === 'function') {
-            logMessage(`Pointer tracking: min(${Math.round(minX)},${Math.round(minY)}) max(${Math.round(maxX)},${Math.round(maxY)})`, 'DEBUG');
+            // Convert min/max to image coordinates for logging
+            const minXImage = window.canvasToImageCoordinates(minX, minY).x;
+            const minYImage = window.canvasToImageCoordinates(minX, minY).y;
+            const maxXImage = window.canvasToImageCoordinates(maxX, maxY).x;
+            const maxYImage = window.canvasToImageCoordinates(maxX, maxY).y;
+            
+            logMessage(`Pointer tracking: min(${Math.round(minXImage)},${Math.round(minYImage)}) max(${Math.round(maxXImage)},${Math.round(maxYImage)})`, 'DEBUG');
         }
         
         // Capture the event for recording if recording is active
         if (typeof window.updateCursorTrailPosition === 'function') {
-            window.updateCursorTrailPosition(pointer.x, pointer.y, {
+            // Convert box coordinates to image coordinates for recording
+            const boxCoordsImage = {
+                left: window.canvasToImageCoordinates(minX, minY).x,
+                top: window.canvasToImageCoordinates(minX, minY).y,
+                width: window.canvasToImageCoordinates(maxX, maxY).x - window.canvasToImageCoordinates(minX, minY).x,
+                height: window.canvasToImageCoordinates(maxX, maxY).y - window.canvasToImageCoordinates(minX, minY).y
+            };
+            
+            window.updateCursorTrailPosition(imageCoords.x, imageCoords.y, {
                 isBoundingBox: true,
                 boundingbox_mode: boundingbox_mode,
-                boxCoords: {
-                    left: minX,
-                    top: minY,
-                    width: maxX - minX,
-                    height: maxY - minY
-                }
+                boxCoords: boxCoordsImage
             });
         }
         
@@ -1017,7 +1038,7 @@ function handleBoundingBoxMouseMove(event) {
     // Only proceed with drawing in corners mode
     if (boundingbox_mode !== 'corners' || !currentBoundingBox || !boundingBoxStartPoint) return;
     
-    // Calculate width and height based on mouse position
+    // Calculate width and height based on mouse position (canvas coordinates for display)
     let width = pointer.x - boundingBoxStartPoint.x;
     let height = pointer.y - boundingBoxStartPoint.y;
     
@@ -1041,25 +1062,31 @@ function handleBoundingBoxMouseMove(event) {
     // Refresh the canvas
     window.canvas.renderAll();
     
-    // Update coordinates display
-    updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
+    // Update coordinates display (using image coordinates)
+    updateCoordinatesDisplay(Math.round(imageCoords.x), Math.round(imageCoords.y));
     
     // Log occasionally to prevent spam
     if (Math.random() < 0.05 && typeof logMessage === 'function') {
-        logMessage(`Drawing bounding box: width=${Math.round(width)}, height=${Math.round(height)}`, 'DEBUG');
+        // Convert width and height to image space for logging
+        const widthImage = width / (window.zoomLevel || 1);
+        const heightImage = height / (window.zoomLevel || 1);
+        logMessage(`Drawing bounding box: width=${Math.round(widthImage)}, height=${Math.round(heightImage)}`, 'DEBUG');
     }
     
     // Capture the event for recording if recording is active
     if (typeof window.updateCursorTrailPosition === 'function') {
-        window.updateCursorTrailPosition(pointer.x, pointer.y, {
+        // Convert box coordinates to image coordinates for recording
+        const boxCoordsImage = {
+            left: window.canvasToImageCoordinates(currentBoundingBox.left, currentBoundingBox.top).x,
+            top: window.canvasToImageCoordinates(currentBoundingBox.left, currentBoundingBox.top).y,
+            width: currentBoundingBox.width / (window.zoomLevel || 1),
+            height: currentBoundingBox.height / (window.zoomLevel || 1)
+        };
+        
+        window.updateCursorTrailPosition(imageCoords.x, imageCoords.y, {
             isBoundingBox: true,
             boundingbox_mode: boundingbox_mode,
-            boxCoords: {
-                left: currentBoundingBox.left,
-                top: currentBoundingBox.top,
-                width: currentBoundingBox.width,
-                height: currentBoundingBox.height
-            }
+            boxCoords: boxCoordsImage
         });
     }
 }
@@ -1074,13 +1101,22 @@ function handleBoundingBoxMouseUp(event) {
     // Get canvas pointer coordinates
     const pointer = window.canvas.getPointer(event.e);
     
+    // Convert canvas coordinates to image pixel coordinates for recording
+    const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
+    
     // In pointer mode, finalize the bounding box
     if (boundingbox_mode === 'pointer' && pointerDragging) {
         pointerDragging = false;
         
         if (typeof logMessage === 'function') {
             if (activeBoundingBox) {
-                logMessage(`Pointer mode: Bounding box updated to (${Math.round(minX)},${Math.round(minY)}) - (${Math.round(maxX)},${Math.round(maxY)})`, 'INFO');
+                // Convert min/max to image coordinates for logging
+                const minXImage = window.canvasToImageCoordinates(minX, minY).x;
+                const minYImage = window.canvasToImageCoordinates(minX, minY).y;
+                const maxXImage = window.canvasToImageCoordinates(maxX, maxY).x;
+                const maxYImage = window.canvasToImageCoordinates(maxX, maxY).y;
+                
+                logMessage(`Pointer mode: Bounding box updated to (${Math.round(minXImage)},${Math.round(minYImage)}) - (${Math.round(maxXImage)},${Math.round(maxYImage)})`, 'INFO');
             }
         }
         
@@ -1096,12 +1132,16 @@ function handleBoundingBoxMouseUp(event) {
         }
         
         // Define box coordinates for recording
-        const boxCoords = activeBoundingBox ? {
-            left: activeBoundingBox.left,
-            top: activeBoundingBox.top,
-            width: activeBoundingBox.width,
-            height: activeBoundingBox.height
-        } : null;
+        let boxCoords = null;
+        if (activeBoundingBox) {
+            // Convert box coordinates to image coordinates for recording
+            boxCoords = {
+                left: window.canvasToImageCoordinates(activeBoundingBox.left, activeBoundingBox.top).x,
+                top: window.canvasToImageCoordinates(activeBoundingBox.left, activeBoundingBox.top).y,
+                width: activeBoundingBox.width / (window.zoomLevel || 1),
+                height: activeBoundingBox.height / (window.zoomLevel || 1)
+            };
+        }
         
         // Capture the event for recording if recording is active
         if (typeof window.captureMouseUpDirect === 'function') {
@@ -1111,7 +1151,7 @@ function handleBoundingBoxMouseUp(event) {
                 boxCoords: boxCoords
             };
             
-            window.captureMouseUpDirect(pointer.x, pointer.y, 0, boxData);
+            window.captureMouseUpDirect(imageCoords.x, imageCoords.y, 0, boxData);
             
             if (typeof logMessage === 'function') {
                 logMessage(`Sent bounding box UP event to recording system: mode=${boundingbox_mode}`, 'DEBUG');
@@ -1131,15 +1171,19 @@ function handleBoundingBoxMouseUp(event) {
     if (boundingbox_mode !== 'corners' || !currentBoundingBox) return;
     
     if (typeof logMessage === 'function') {
-        logMessage(`Completed bounding box: width=${Math.round(currentBoundingBox.width)}, height=${Math.round(currentBoundingBox.height)}`, 'INFO');
+        // Convert width and height to image space for logging
+        const widthImage = currentBoundingBox.width / (window.zoomLevel || 1);
+        const heightImage = currentBoundingBox.height / (window.zoomLevel || 1);
+        logMessage(`Completed bounding box: width=${Math.round(widthImage)}, height=${Math.round(heightImage)}`, 'INFO');
     }
     
     // Store box coordinates before potentially removing it
+    // Convert to image coordinates for consistency
     const boxCoords = {
-        left: currentBoundingBox.left,
-        top: currentBoundingBox.top,
-        width: currentBoundingBox.width,
-        height: currentBoundingBox.height
+        left: window.canvasToImageCoordinates(currentBoundingBox.left, currentBoundingBox.top).x,
+        top: window.canvasToImageCoordinates(currentBoundingBox.left, currentBoundingBox.top).y,
+        width: currentBoundingBox.width / (window.zoomLevel || 1),
+        height: currentBoundingBox.height / (window.zoomLevel || 1)
     };
     
     // Make sure the box has some minimum size
@@ -1174,7 +1218,7 @@ function handleBoundingBoxMouseUp(event) {
             boxCoords: boxCoords
         };
         
-        window.captureMouseUpDirect(pointer.x, pointer.y, 0, boxData);
+        window.captureMouseUpDirect(imageCoords.x, imageCoords.y, 0, boxData);
         
         if (typeof logMessage === 'function') {
             logMessage(`Sent bounding box UP event to recording system: width=${Math.round(boxCoords.width)}, height=${Math.round(boxCoords.height)}`, 'DEBUG');

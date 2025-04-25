@@ -185,6 +185,8 @@ window.decodeAnnotationData = decodeAnnotationData;
 window.decodeBase64InChunks = decodeBase64InChunks;
 window.downloadFile = downloadFile;
 window.handleCursorTrailUpdate = handleCursorTrailUpdate;
+window.canvasToImageCoordinates = canvasToImageCoordinates;
+window.imageToCanvasCoordinates = imageToCanvasCoordinates;
 window.transformCoordinates = transformCoordinates;
 window.showEmailModal = showEmailModal;
 window.sendEmail = sendEmail;
@@ -208,13 +210,47 @@ function handleCursorTrailUpdate(message) {
 }
 
 /**
- * Transform canvas coordinates
- * @param {Object} pointer - The canvas pointer object
- * @returns {Object} The transformed coordinates
+ * Convert canvas coordinates to image pixel coordinates
+ * @param {number} canvasX - X coordinate in canvas space
+ * @param {number} canvasY - Y coordinate in canvas space
+ * @returns {Object} Coordinates in image pixel space
+ */
+function canvasToImageCoordinates(canvasX, canvasY) {
+    const zoom = window.zoomLevel || 1;
+    return {
+        x: Math.round(canvasX / zoom),
+        y: Math.round(canvasY / zoom)
+    };
+}
+
+/**
+ * Convert image pixel coordinates to canvas coordinates
+ * @param {number} imageX - X coordinate in image pixel space
+ * @param {number} imageY - Y coordinate in image pixel space
+ * @returns {Object} Coordinates in canvas space
+ */
+function imageToCanvasCoordinates(imageX, imageY) {
+    const zoom = window.zoomLevel || 1;
+    return {
+        x: imageX * zoom,
+        y: imageY * zoom
+    };
+}
+
+/**
+ * Transform canvas coordinates to image pixel coordinates
+ * Acts as a bridge between fabric.js pointer objects and image coordinates
+ * @param {Object} pointer - The fabric canvas pointer object
+ * @returns {Object} The transformed coordinates in image pixel space
  */
 function transformCoordinates(pointer) {
-    // This function will be implemented for coordinate transformations
-    return pointer;
+    if (!pointer || typeof pointer.x !== 'number' || typeof pointer.y !== 'number') {
+        logMessage('Warning: Invalid pointer object passed to transformCoordinates', 'WARN');
+        return pointer;
+    }
+    
+    // Use the canvasToImageCoordinates function for the actual transformation
+    return canvasToImageCoordinates(pointer.x, pointer.y);
 }
 
 /**

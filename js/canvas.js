@@ -172,8 +172,11 @@ window.fabric = fabric;
         
         const now = Date.now();
         
-        // Store current position (canvas coordinates)
+        // Store current position (canvas coordinates) for display
         lastKnownMousePosition = { x: pointer.x, y: pointer.y };
+        
+        // Convert to image pixel coordinates for recording
+        const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
         
         // Check if mouse has moved at least 3 pixels from the last logged point
         const lastPoint = cursorTrailPoints.length > 0 ? 
@@ -184,7 +187,7 @@ window.fabric = fabric;
         
         // Only add a new point if movement exceeds the pixel threshold (3px)
         if (distance >= 3) {
-            // Add new point with timestamp
+            // Add new point with timestamp (using canvas coordinates for display)
             cursorTrailPoints.push({
                 x: pointer.x,
                 y: pointer.y,
@@ -192,19 +195,19 @@ window.fabric = fabric;
                 opacity: 1
             });
             
-            // Log the position
+            // Log the position (using image coordinates)
             if (typeof logMessage === 'function') {
-                logMessage(`Cursor trail updated: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                logMessage(`Cursor trail updated: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`, 'DEBUG');
             }
             
-            // IMPORTANT: Directly send this data to the recording system
+            // IMPORTANT: Directly send image coordinates to the recording system
             // This ensures mouse data is captured even if event listeners aren't being triggered
             if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
-                window.updateCursorTrailPosition(pointer.x, pointer.y);
-                logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                window.updateCursorTrailPosition(imageCoords.x, imageCoords.y);
+                logMessage(`Sent cursor position to recording system: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`, 'DEBUG');
             }
             
-            // Render the updated trail
+            // Render the updated trail (using canvas coordinates for display)
             renderCursorTrail();
             
             // Periodically clean up old points
@@ -304,24 +307,24 @@ function checkAndLogMouseMovement(currentPos) {
     const canvasElement = canvas.lowerCanvasEl;
     const rect = canvasElement.getBoundingClientRect();
     
-    // Scale the coordinates based on canvas zoom
-    const scaleFactor = zoomLevel || 1;
+    // Convert canvas coordinates to image pixel coordinates
+    const imageCoords = window.canvasToImageCoordinates(currentPos.x, currentPos.y);
     
-    // Calculate screen coordinates
-    const screenX = Math.round(currentPos.x);
-    const screenY = Math.round(currentPos.y);
+    // Use image coordinates for display and logging
+    const imageX = Math.round(imageCoords.x);
+    const imageY = Math.round(imageCoords.y);
     
     const distance = calculateDistance(
-        { x: screenX, y: screenY }, 
+        { x: imageX, y: imageY }, 
         lastLoggedMousePosition
     );
     
     if (distance > MOUSE_POSITION_TOLERANCE) {
-        logMessage(`Mouse moved: X: ${screenX}, Y: ${screenY} (${distance.toFixed(1)}px)`);
-        lastLoggedMousePosition = { x: screenX, y: screenY };
+        logMessage(`Mouse moved: X: ${imageX}, Y: ${imageY} (${distance.toFixed(1)}px)`);
+        lastLoggedMousePosition = { x: imageX, y: imageY };
         
-        // Update coordinates in UI
-        updateCoordinatesDisplay(screenX, screenY);
+        // Update coordinates in UI with image coordinates (not canvas coordinates)
+        updateCoordinatesDisplay(imageX, imageY);
     }
 }
 
@@ -438,15 +441,18 @@ function setupCursorTrailTracking(canvas) {
                 // Initial point at mouse down position
                 const pointer = canvas.getPointer(options.e);
                 
+                // Convert to image pixel coordinates for logging and recording
+                const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
+                
                 // Log detailed info about the mouse down event
-                logMessage(`Mouse down detected - x:${Math.round(pointer.x)}, y:${Math.round(pointer.y)}, button:${options.e.button}`, 'INFO');
+                logMessage(`Mouse down detected - x:${Math.round(imageCoords.x)}, y:${Math.round(imageCoords.y)}, button:${options.e.button}`, 'INFO');
                 
                 updateCursorTrail(pointer);
                 
                 // IMPORTANT: Directly send mouse down event to recording system
                 if (typeof window.captureMouseDownDirect === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
-                    window.captureMouseDownDirect(pointer.x, pointer.y, options.e.button);
-                    logMessage(`Sent mouse down to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                    window.captureMouseDownDirect(imageCoords.x, imageCoords.y, options.e.button);
+                    logMessage(`Sent mouse down to recording system: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`, 'DEBUG');
                 } else {
                     logMessage('NOT sending mouse down to recording system - recording inactive or function unavailable', 'DEBUG');
                 }
@@ -470,8 +476,12 @@ function setupCursorTrailTracking(canvas) {
             // IMPORTANT: Directly send mouse up event to recording system
             if (typeof window.captureMouseUpDirect === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
                 const pointer = canvas.getPointer(options.e);
-                window.captureMouseUpDirect(pointer.x, pointer.y, options.e.button);
-                logMessage(`Sent mouse up to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                
+                // Convert to image pixel coordinates for recording
+                const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
+                
+                window.captureMouseUpDirect(imageCoords.x, imageCoords.y, options.e.button);
+                logMessage(`Sent mouse up to recording system: X: ${Math.round(imageCoords.x)}, Y: ${Math.round(imageCoords.y)}`, 'DEBUG');
             }
             
             // Clear the trail when mouse button released
@@ -650,58 +660,6 @@ function renderCursorTrail() {
 }
 
 /**
- * Update cursor trail with current pointer position
- * @param {Object} pointer - The canvas pointer coordinates
- */
-function updateCursorTrail(pointer) {
-    if (!showCursorTail) return;
-    
-    const now = Date.now();
-    
-    // Store current position (canvas coordinates)
-    lastKnownMousePosition = { x: pointer.x, y: pointer.y };
-    
-    // Check if mouse has moved at least 3 pixels from the last logged point
-    const lastPoint = cursorTrailPoints.length > 0 ? 
-        cursorTrailPoints[cursorTrailPoints.length - 1] : 
-        { x: pointer.x - 10, y: pointer.y - 10, time: 0 }; // Start with a slight offset
-    
-    const distance = calculateDistance(lastKnownMousePosition, lastPoint);
-    
-    // Only add a new point if movement exceeds the pixel threshold (3px)
-    if (distance >= 3) {
-        // Add new point with timestamp
-        cursorTrailPoints.push({
-            x: pointer.x,
-            y: pointer.y,
-            time: now,
-            opacity: 1
-        });
-        
-        // Log the position
-        if (typeof logMessage === 'function') {
-            logMessage(`Cursor trail updated: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
-        }
-        
-        // IMPORTANT: Directly send this data to the recording system
-        // This ensures mouse data is captured even if event listeners aren't being triggered
-        if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
-            window.updateCursorTrailPosition(pointer.x, pointer.y);
-            logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
-        }
-        
-        // Render the updated trail
-        renderCursorTrail();
-        
-        // Periodically clean up old points
-        if (now - lastTrailCleanup > 200) {
-            cleanupCursorTrail();
-            lastTrailCleanup = now;
-        }
-    }
-}
-
-/**
  * Clear all cursor trail points and remove them from the canvas
  */
 function clearCursorTrail() {
@@ -731,7 +689,7 @@ function updateCursorTrailStatus(active, ready = false) {
         } else if (ready) {
             statusEl.textContent = 'READY';
             statusEl.className = 'ms-2 badge bg-warning';
-    } else {
+        } else {
             statusEl.textContent = 'INACTIVE';
             statusEl.className = 'ms-2 badge status-inactive';
         }
