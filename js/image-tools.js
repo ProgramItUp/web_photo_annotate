@@ -129,6 +129,14 @@ function loadImageToCanvas(src) {
         // Reset zoom and pan
         canvas.setZoom(1);
         zoomLevel = 1;
+        window.zoomLevel = 1;
+        window.zoomFactor = 1; // Ensure both zoom variables are in sync
+        
+        console.log('Image loaded, zoom level reset:', {
+            zoomLevel,
+            'window.zoomLevel': window.zoomLevel,
+            'window.zoomFactor': window.zoomFactor
+        });
         
         // Reset filters
         brightnessValue = DEFAULT_BRIGHTNESS;

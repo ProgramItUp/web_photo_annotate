@@ -216,7 +216,14 @@ function handleCursorTrailUpdate(message) {
  * @returns {Object} Coordinates in image pixel space
  */
 function canvasToImageCoordinates(canvasX, canvasY) {
-    const zoom = window.zoomLevel || 1;
+    // Check all possible sources of zoom information
+    const zoom = window.zoomLevel || window.zoomFactor || 1;
+    
+    // Debug the zoom value
+    console.log('Zoom value used for coordinate conversion:', zoom, 
+                'window.zoomLevel=', window.zoomLevel, 
+                'window.zoomFactor=', window.zoomFactor);
+    
     return {
         x: Math.round(canvasX / zoom),
         y: Math.round(canvasY / zoom)
