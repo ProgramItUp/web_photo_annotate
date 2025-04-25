@@ -351,6 +351,9 @@ class App {
         // Update UI
         this.updateToolButtonsUI();
         
+        // Notify the image handler that a tool is active (to prevent panning)
+        this.imageHandler.setToolActive(true);
+        
         // Activate the tool
         switch (toolName) {
             case 'laser-pointer':
@@ -386,6 +389,9 @@ class App {
                 this.boundingBoxTool.deactivate();
                 break;
         }
+        
+        // Notify the image handler that no tool is active (to enable panning)
+        this.imageHandler.setToolActive(false);
         
         // Record tool deactivation if recording
         if (this.recorder.isRecording()) {
