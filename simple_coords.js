@@ -102,30 +102,29 @@ function getImagePixelCoordinates(event) {
     // Get the bounding rectangle of the image
     const rect = img.getBoundingClientRect();
     
-    // Debug container dimensions and offsets
-    const container = document.getElementById('image-container');
-    const containerRect = container.getBoundingClientRect();
-    console.log('Container rect:', {
-        width: containerRect.width,
-        height: containerRect.height,
-        left: containerRect.left,
-        top: containerRect.top
-    });
-    console.log('Image rect:', {
-        width: rect.width,
-        height: rect.height,
-        left: rect.left,
-        top: rect.top
-    });
+    // Calculate mouse position relative to the image
+    // Account for any potential padding/border in the parent container
+    // Bootstrap columns (col-md-9) have default padding that we need to compensate for
+    const containerPadding = {
+        left: 0, // Will be calculated
+        top: 0   // Will be calculated
+    };
     
-    // Calculate offset of image within container (due to Bootstrap padding)
-    const offsetX = rect.left - containerRect.left;
-    const offsetY = rect.top - containerRect.top;
-    console.log(`Image offset within container: ${offsetX}px, ${offsetY}px`);
+    // Calculate the container's padding by comparing container position with image position
+    const container = imageContainer.getBoundingClientRect();
+    containerPadding.left = rect.left - container.left;
+    containerPadding.top = rect.top - container.top;
     
-    // Calculate mouse position relative to the image, accounting for zoom
-    const x = Math.floor((event.clientX - rect.left) / zoomFactor);
-    const y = Math.floor((event.clientY - rect.top) / zoomFactor);
+    // Log the offset calculation for debugging
+    if (Math.random() < 0.01) { // Only log occasionally to avoid console spam
+        console.log('Container padding detected:', containerPadding);
+        console.log('Image rect:', rect);
+        console.log('Container rect:', container);
+    }
+    
+    // Apply padding offset and zoom factor to get accurate image coordinates
+    const x = Math.floor((event.clientX - rect.left + containerPadding.left) / zoomFactor);
+    const y = Math.floor((event.clientY - rect.top + containerPadding.top) / zoomFactor);
     
     // Clamp to image bounds
     const px = Math.max(0, Math.min(x, img.naturalWidth - 1));
@@ -155,18 +154,30 @@ function addDot(x, y) {
     const dot = document.createElement('div');
     dot.className = 'annotation-dot';
     dot.style.position = 'absolute';
-    dot.style.left = `${x * zoomFactor}px`;
-    dot.style.top = `${y * zoomFactor}px`;
+    
+    // Account for any padding/border in the container to position the dot correctly
+    // Get the container's padding to adjust dot positioning
+    const imgRect = img.getBoundingClientRect();
+    const containerRect = imageContainer.getBoundingClientRect();
+    const containerPadding = {
+        left: imgRect.left - containerRect.left,
+        top: imgRect.top - containerRect.top
+    };
+    
+    // Apply container padding in the position calculation
+    dot.style.left = `${(x * zoomFactor) - containerPadding.left}px`;
+    dot.style.top = `${(y * zoomFactor) - containerPadding.top}px`;
     
     // Add to container and track
     imageContainer.appendChild(dot);
     dots.push(dot);
     
-    console.log(`Added dot at: ${x}, ${y}`);
+    console.log(`Added dot at: ${x}, ${y} (with container padding adjustment)`);
 }
 
 // Update zoom
 function updateZoom() {
+    const oldZoomFactor = zoomFactor;
     zoomFactor = parseFloat(zoomRange.value);
     
     // Make sure zoomFactor is also available globally for our utils.js functions
@@ -180,15 +191,29 @@ function updateZoom() {
     img.style.transform = `scale(${zoomFactor})`;
     img.style.transformOrigin = 'top left';
     
-    // Adjust dot positions
+    // Calculate container padding for dot positioning
+    const imgRect = img.getBoundingClientRect();
+    const containerRect = imageContainer.getBoundingClientRect();
+    const containerPadding = {
+        left: imgRect.left - containerRect.left,
+        top: imgRect.top - containerRect.top
+    };
+    
+    // Adjust dot positions with container padding and zoom
     dots.forEach(dot => {
-        // Extract the original coordinates
-        const left = parseInt(dot.style.left) / (zoomFactor / parseFloat(zoomRange.value));
-        const top = parseInt(dot.style.top) / (zoomFactor / parseFloat(zoomRange.value));
+        // Calculate original x,y coordinates (unzoomed)
+        // Extract current pixel coordinates with old zoom factor and adding back old padding
+        const oldLeft = parseInt(dot.style.left);
+        const oldTop = parseInt(dot.style.top);
         
-        // Update with new zoom
-        dot.style.left = `${left * zoomFactor}px`;
-        dot.style.top = `${top * zoomFactor}px`;
+        // Calculate the original image pixel coordinates
+        // This is the inverse of the positioning formula in addDot
+        const pixelX = (oldLeft + containerPadding.left) / oldZoomFactor;
+        const pixelY = (oldTop + containerPadding.top) / oldZoomFactor;
+        
+        // Update with new zoom and padding adjustment
+        dot.style.left = `${(pixelX * zoomFactor) - containerPadding.left}px`;
+        dot.style.top = `${(pixelY * zoomFactor) - containerPadding.top}px`;
     });
 }
 
