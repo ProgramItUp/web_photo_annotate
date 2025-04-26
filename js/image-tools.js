@@ -92,25 +92,38 @@ function loadImageToCanvas(src) {
         
         const containerWidth = container.offsetWidth;
         
-        // Use natural image dimensions for canvas and container
+        // Get natural image dimensions
         const naturalWidth = img.width;
         const naturalHeight = img.height;
-        logMessage(`Using natural dimensions: ${naturalWidth}x${naturalHeight}`, 'DEBUG');
+        logMessage(`Natural dimensions: ${naturalWidth}x${naturalHeight}`, 'DEBUG');
         
-        // Resize the canvas to match the natural image dimensions
-        canvas.setWidth(naturalWidth);
-        canvas.setHeight(naturalHeight);
+        // Define maximum display dimensions
+        const MAX_WIDTH = 1000;
+        const MAX_HEIGHT = 1000;
         
-        // Update the container height to match
-        container.style.height = `${naturalHeight}px`;
-        // Optionally set container width as well, though block elements usually fill width
-        // container.style.width = `${naturalWidth}px`; 
+        // Calculate scale factors to fit within max dimensions
+        const scaleW = naturalWidth > MAX_WIDTH ? MAX_WIDTH / naturalWidth : 1;
+        const scaleH = naturalHeight > MAX_HEIGHT ? MAX_HEIGHT / naturalHeight : 1;
         
-        // Remove scaling: Display image at its original size
-        // const scaleFactor = containerWidth / img.width;
-        // img.scale(scaleFactor);
-        // logMessage(`Image scaling removed (was factor: ${scaleFactor.toFixed(3)})`, 'DEBUG');
-        img.set({ scaleX: 1, scaleY: 1 }); // Explicitly set scale to 1
+        // Use the smaller scale factor to preserve aspect ratio and fit both constraints
+        const scale = Math.min(scaleW, scaleH);
+        
+        // Calculate scaled dimensions
+        const scaledWidth = naturalWidth * scale;
+        const scaledHeight = naturalHeight * scale;
+        logMessage(`Scaling image by ${scale.toFixed(3)} to ${scaledWidth.toFixed(0)}x${scaledHeight.toFixed(0)}`, 'DEBUG');
+        
+        // Resize the canvas to match the scaled image dimensions
+        canvas.setWidth(scaledWidth);
+        canvas.setHeight(scaledHeight);
+        
+        // Update the container height to match scaled height
+        container.style.height = `${scaledHeight}px`;
+        // Optionally set container width (useful if container is not block or has padding)
+        // container.style.width = `${scaledWidth}px`; 
+        
+        // Apply the calculated scale to the Fabric image object
+        img.set({ scaleX: scale, scaleY: scale });
         
         // Position the image at the top-left corner
         img.set({
@@ -147,7 +160,7 @@ function loadImageToCanvas(src) {
         
         canvas.renderAll();
         
-        logMessage(`Image loaded and resized to ${containerWidth}x${Math.round(naturalHeight)} pixels`);
+        logMessage(`Image loaded and canvas resized to ${scaledWidth.toFixed(0)}x${scaledHeight.toFixed(0)} pixels`);
         
         // Reinitialize drawing tools
         if (window.drawingTools) {

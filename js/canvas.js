@@ -101,6 +101,9 @@ window.fabric = fabric;
     
     // Resize canvas function - define globally at the start
     window.resizeCanvas = function() {
+        console.log('Global resizeCanvas called - Functionality disabled to prevent conflict with ImageHandler.');
+        return;
+/*
         console.log('Global resizeCanvas called');
         
         if (!window.canvas) {
@@ -164,6 +167,7 @@ window.fabric = fabric;
         if (typeof logMessage === 'function') {
             logMessage(`Canvas resized to ${containerWidth}x${Math.round(newHeight)} pixels`);
         }
+*/        
     };
     
     // Re-implementing cursor trail update function
@@ -184,7 +188,7 @@ window.fabric = fabric;
             logMessage('Failed to get image coordinates for cursor trail update', 'WARN');
             return; // Don't proceed if coordinates are invalid
         }
-
+        
         // Check if mouse has moved at least 3 pixels from the last logged point
         const lastPoint = cursorTrailPoints.length > 0 ? 
             cursorTrailPoints[cursorTrailPoints.length - 1] : 

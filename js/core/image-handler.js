@@ -59,16 +59,62 @@ export class ImageHandler {
      * @param {string} src - The image source (URL or data URL)
      */
     setImageSource(src) {
+        logMessage(`Assigning onload handler for: ${src.substring(0, 60)}...`, 'DEBUG');
         this.image.onload = () => {
-            this.resetView();
-            // Dispatch a custom event when image is loaded
+            logMessage('>>> Executing image.onload handler', 'INFO');
+            // Define maximum display dimensions
+            const MAX_WIDTH = 1000;
+            const MAX_HEIGHT = 1000;
+            
+            // Get natural dimensions
+            const naturalWidth = this.image.naturalWidth;
+            const naturalHeight = this.image.naturalHeight;
+            logMessage(`Image loaded: Natural dimensions ${naturalWidth}x${naturalHeight}`, 'INFO');
+            
+            // Calculate scale factor
+            const scaleW = naturalWidth > MAX_WIDTH ? MAX_WIDTH / naturalWidth : 1;
+            const scaleH = naturalHeight > MAX_HEIGHT ? MAX_HEIGHT / naturalHeight : 1;
+            const scale = Math.min(scaleW, scaleH);
+            logMessage(`Calculated display scale: ${scale.toFixed(3)}`, 'DEBUG');
+            
+            // Set the calculated scale as the initial zoomFactor
+            this.zoomFactor = scale;
+            
+            // Reset pan and filters, but keep the calculated zoomFactor
+            this.panOffset = { x: 0, y: 0 };
+            this.brightness = 0;
+            this.contrast = 0;
+            this.updateFilters(); // Apply default filters
+            this.updateImageTransform(); // Apply pan and calculated scale
+            
+            // Set image element dimensions to scaled size
+            const scaledWidth = naturalWidth * scale;
+            const scaledHeight = naturalHeight * scale;
+            this.image.style.width = `${scaledWidth}px`;
+            this.image.style.height = `${scaledHeight}px`;
+            logMessage(`Image element style set to ${scaledWidth.toFixed(0)}x${scaledHeight.toFixed(0)}px`, 'DEBUG');
+
+            // Reset container size - allowing it to shrink/grow with the image
+            // Note: inline-block display on container means it should size to content
+            this.imageContainer.style.height = ''; // Remove fixed height if set previously
+            this.imageContainer.style.width = ''; // Remove fixed width if set previously
+
+            // Dispatch a custom event when image is loaded and scaled
             this.imageContainer.dispatchEvent(new CustomEvent('image-loaded', { 
                 detail: { 
                     image: this.image,
-                    width: this.image.naturalWidth,
-                    height: this.image.naturalHeight
+                    width: naturalWidth,
+                    height: naturalHeight,
+                    scaledWidth: scaledWidth,
+                    scaledHeight: scaledHeight,
+                    scaleFactor: scale
                 }
             }));
+        };
+        logMessage('>>> Finished assigning image.onload handler', 'DEBUG');
+        this.image.onerror = () => {
+            logMessage(`Error loading image source: ${src}`, 'ERROR');
+            // Handle error display if needed
         };
         this.image.src = src;
     }
@@ -77,11 +123,13 @@ export class ImageHandler {
      * Resets zoom, pan and filters to default values
      */
     resetView() {
-        this.zoomFactor = 1;
+        this.zoomFactor = 1; // Default zoom is 1, scaling is handled in onload
         this.panOffset = { x: 0, y: 0 };
         this.brightness = 0;
         this.contrast = 0;
-        this.updateImageTransform();
+        // Update filters and transform (will apply zoomFactor=1 initially)
+        this.updateFilters(); 
+        this.updateImageTransform(); 
     }
     
     /**
@@ -222,12 +270,6 @@ export class ImageHandler {
             if (this.coordinateDisplay) {
                 this.coordinateDisplay.textContent = 'Mouse: X: -, Y: -';
             }
-        });
-        
-        // Handle image load
-        this.image.addEventListener('load', () => {
-            // Reset the view on new image load
-            this.resetView();
         });
     }
     
