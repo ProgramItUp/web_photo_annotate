@@ -1,0 +1,6 @@
+# Frontend Libraries (to be included via CDN)
+fabric.js==5.3.0      # Canvas library for image manipulation and drawing
+recordrtc==5.6.2      # For audio recording
+file-saver==2.0.5     # For saving files in the browser
+emailjs==3.11.0       # For sending emails from client-side
+bootstrap==5.3.2      # For responsive UI components 

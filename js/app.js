@@ -258,8 +258,6 @@ class App {
         
         // Mouse events for tools
         this.imageContainer.addEventListener('mousedown', (e) => {
-            if (!this.recorder.isRecording() && !this.player.isCurrentlyPlaying()) return;
-            
             if (this.activeTool === 'bounding-box') {
                 const coords = this.boundingBoxTool.startBox(e);
                 if (coords && this.recorder.isRecording()) {
@@ -272,8 +270,6 @@ class App {
         });
         
         this.imageContainer.addEventListener('mousemove', (e) => {
-            if (!this.recorder.isRecording() && !this.player.isCurrentlyPlaying()) return;
-            
             if (this.activeTool === 'laser-pointer') {
                 const coords = this.laserPointer.addTrailPoint(e);
                 if (coords && this.recorder.isRecording()) {
@@ -288,8 +284,6 @@ class App {
         });
         
         this.imageContainer.addEventListener('mouseup', (e) => {
-            if (!this.recorder.isRecording() && !this.player.isCurrentlyPlaying()) return;
-            
             if (this.activeTool === 'bounding-box' && this.boundingBoxTool.isDrawing) {
                 const coords = this.boundingBoxTool.finishBox(e);
                 if (coords && this.recorder.isRecording()) {
@@ -314,7 +308,7 @@ class App {
             this.imageHandler.loadFromURL(imageUrl);
         }
     }
-    
+
     /**
      * Creates a sharable link with the current image URL
      */
@@ -351,8 +345,8 @@ class App {
         // Update UI
         this.updateToolButtonsUI();
         
-        // Notify the image handler that a tool is active (to prevent panning)
-        this.imageHandler.setToolActive(true);
+        // Disable panning when a tool is active
+        this.imageHandler.setPanningEnabled(false);
         
         // Activate the tool
         switch (toolName) {
@@ -390,8 +384,8 @@ class App {
                 break;
         }
         
-        // Notify the image handler that no tool is active (to enable panning)
-        this.imageHandler.setToolActive(false);
+        // Re-enable panning after deactivating the tool
+        this.imageHandler.setPanningEnabled(true);
         
         // Record tool deactivation if recording
         if (this.recorder.isRecording()) {
@@ -575,10 +569,10 @@ class App {
                 // Update UI to reflect active tool during playback
                 this.activeTool = status.tool;
                 this.updateToolButtonsUI();
-                break;
+            break;
         }
     }
-    
+
     /**
      * Starts playback of the current recording
      */
@@ -683,7 +677,7 @@ class App {
             alert('The annotation data is too large to send via mailto. Please use the Save button instead, and then attach the file to an email manually.');
         }
     }
-    
+
     /**
      * Loads a recording file
      * @param {File} file - The recording file to load

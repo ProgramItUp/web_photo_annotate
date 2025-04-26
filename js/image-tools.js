@@ -92,26 +92,27 @@ function loadImageToCanvas(src) {
         
         const containerWidth = container.offsetWidth;
         
-        // Calculate the height based on the image's aspect ratio
-        const aspectRatio = img.height / img.width;
-        const newHeight = containerWidth * aspectRatio;
+        // Use natural image dimensions for canvas and container
+        const naturalWidth = img.width;
+        const naturalHeight = img.height;
+        logMessage(`Using natural dimensions: ${naturalWidth}x${naturalHeight}`, 'DEBUG');
         
-        logMessage(`Container dimensions: ${containerWidth}x${Math.round(newHeight)}`, 'DEBUG');
-        
-        // Resize the canvas to match the image dimensions
-        canvas.setWidth(containerWidth);
-        canvas.setHeight(newHeight);
+        // Resize the canvas to match the natural image dimensions
+        canvas.setWidth(naturalWidth);
+        canvas.setHeight(naturalHeight);
         
         // Update the container height to match
-        container.style.height = `${newHeight}px`;
+        container.style.height = `${naturalHeight}px`;
+        // Optionally set container width as well, though block elements usually fill width
+        // container.style.width = `${naturalWidth}px`; 
         
-        // Scale image to fit canvas width while maintaining aspect ratio
-        const scaleFactor = containerWidth / img.width;
-        img.scale(scaleFactor);
+        // Remove scaling: Display image at its original size
+        // const scaleFactor = containerWidth / img.width;
+        // img.scale(scaleFactor);
+        // logMessage(`Image scaling removed (was factor: ${scaleFactor.toFixed(3)})`, 'DEBUG');
+        img.set({ scaleX: 1, scaleY: 1 }); // Explicitly set scale to 1
         
-        logMessage(`Image scaled by factor: ${scaleFactor.toFixed(3)}`, 'DEBUG');
-        
-        // Center the image
+        // Position the image at the top-left corner
         img.set({
             left: 0,
             top: 0,
@@ -146,7 +147,7 @@ function loadImageToCanvas(src) {
         
         canvas.renderAll();
         
-        logMessage(`Image loaded and resized to ${containerWidth}x${Math.round(newHeight)} pixels`);
+        logMessage(`Image loaded and resized to ${containerWidth}x${Math.round(naturalHeight)} pixels`);
         
         // Reinitialize drawing tools
         if (window.drawingTools) {
@@ -186,11 +187,39 @@ function updateImageFilters() {
 }
 
 /**
- * Transform canvas coordinates to image coordinates
- * @param {Object} pointer - The canvas pointer coordinates
- * @returns {Object} The transformed coordinates
+ * Transform canvas coordinates to image pixel coordinates, accounting for scale and position.
+ * @param {number} canvasX - X coordinate relative to the canvas top-left.
+ * @param {number} canvasY - Y coordinate relative to the canvas top-left.
+ * @returns {Object} The transformed image pixel coordinates { x, y }, or null if canvas/image not ready.
  */
-function transformCoordinates(pointer) {
-    // Just return the original coordinates for now
-    return pointer;
+window.canvasToImageCoordinates = function(canvasX, canvasY) {
+    const canvas = window.canvas;
+    if (!canvas) {
+        console.error('canvasToImageCoordinates: Canvas not available');
+        return null;
+    }
+    
+    // Find the image object on the canvas (assuming it's the first object or has type 'image')
+    const imgObject = canvas.getObjects().find(obj => obj.type === 'image');
+    
+    if (!imgObject) {
+        console.error('canvasToImageCoordinates: Image object not found on canvas');
+        // Return canvas coordinates as a fallback?
+        return { x: Math.round(canvasX), y: Math.round(canvasY) }; 
+    }
+
+    // Calculate coordinates relative to the image object's top-left corner on the canvas
+    const relativeX = canvasX - imgObject.left;
+    const relativeY = canvasY - imgObject.top;
+
+    // Scale the relative coordinates back to the image's original pixel coordinates
+    const imageX = relativeX / imgObject.scaleX;
+    const imageY = relativeY / imgObject.scaleY;
+
+    // Clamp coordinates to the image's natural dimensions
+    // Use imgObject.width and imgObject.height which store the original dimensions
+    const finalX = Math.max(0, Math.min(Math.floor(imageX), imgObject.width - 1));
+    const finalY = Math.max(0, Math.min(Math.floor(imageY), imgObject.height - 1));
+
+    return { x: finalX, y: finalY };
 } 

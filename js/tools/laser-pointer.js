@@ -106,7 +106,9 @@ export class LaserPointer {
         // Limit trail length
         if (this.trailPoints.length > this.maxTrailPoints) {
             const oldestPoint = this.trailPoints.shift();
-            this.trailContainer.removeChild(oldestPoint.element);
+            if (oldestPoint && oldestPoint.element && oldestPoint.element.parentNode) {
+                this.trailContainer.removeChild(oldestPoint.element);
+            }
         }
         
         // Update opacity immediately for smooth fading

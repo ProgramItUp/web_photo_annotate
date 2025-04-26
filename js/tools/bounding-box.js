@@ -272,4 +272,14 @@ export class BoundingBoxTool {
             this.resizeCanvas();
         });
     }
+    
+    /**
+     * Clears all resources when the tool is no longer needed
+     */
+    dispose() {
+        this.clearBoxes();
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+    }
 } 

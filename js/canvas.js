@@ -176,8 +176,15 @@ window.fabric = fabric;
         lastKnownMousePosition = { x: pointer.x, y: pointer.y };
         
         // Convert to image pixel coordinates for recording
+        // Use the globally defined function
         const imageCoords = window.canvasToImageCoordinates(pointer.x, pointer.y);
         
+        // Check if coordinate calculation was successful
+        if (!imageCoords) {
+            logMessage('Failed to get image coordinates for cursor trail update', 'WARN');
+            return; // Don't proceed if coordinates are invalid
+        }
+
         // Check if mouse has moved at least 3 pixels from the last logged point
         const lastPoint = cursorTrailPoints.length > 0 ? 
             cursorTrailPoints[cursorTrailPoints.length - 1] : 

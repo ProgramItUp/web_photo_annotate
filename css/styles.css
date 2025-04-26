@@ -12,7 +12,6 @@ body {
     position: relative;
     overflow: auto;
     max-height: 80vh;
-    border: 1px solid #ccc;
     background: #222;
     user-select: none;
 }

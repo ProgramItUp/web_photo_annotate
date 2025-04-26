@@ -21,7 +21,7 @@ export class ImageHandler {
         this.dragStart = { x: 0, y: 0 };
         this.brightness = 0;
         this.contrast = 0;
-        this.toolActive = false; // Flag to track if a tool is active
+        this.panningEnabled = true;
         
         // Create the image if it doesn't exist
         if (!this.image) {
@@ -154,11 +154,12 @@ export class ImageHandler {
     }
     
     /**
-     * Sets the toolActive flag to prevent panning when tools are active
-     * @param {boolean} active - Whether a tool is active
+     * Enable or disable panning
+     * @param {boolean} enabled - Whether panning should be enabled
      */
-    setToolActive(active) {
-        this.toolActive = active;
+    setPanningEnabled(enabled) {
+        this.panningEnabled = enabled;
+        this.imageContainer.style.cursor = enabled ? 'default' : 'crosshair';
     }
     
     /**
@@ -181,29 +182,27 @@ export class ImageHandler {
             this.zoomAtPoint(mouseX, mouseY, zoomFactor);
         });
         
-        // Mouse events for panning - only if no tool is active
+        // Mouse events for panning
         this.imageContainer.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return; // Only left mouse button
+            if (!this.panningEnabled) return; // Skip if panning is disabled
             
-            // Only initiate panning if no tool is active
-            if (!this.toolActive) {
-                this.isDragging = true;
-                this.dragStart = { x: e.clientX - this.panOffset.x, y: e.clientY - this.panOffset.y };
-                this.imageContainer.style.cursor = 'grabbing';
-            }
+            this.isDragging = true;
+            this.dragStart = { x: e.clientX - this.panOffset.x, y: e.clientY - this.panOffset.y };
+            this.imageContainer.style.cursor = 'grabbing';
         });
         
         window.addEventListener('mousemove', (e) => {
-            // Always update coordinate display
-            if (this.image.complete && this.imageContainer.contains(e.target)) {
-                const coords = getImagePixelCoordinates(e, this.image, this.zoomFactor);
-                if (this.coordinateDisplay) {
-                    this.coordinateDisplay.textContent = `Mouse: X: ${coords.x}, Y: ${coords.y}`;
+            if (!this.isDragging) {
+                // Update coordinate display when not dragging
+                if (this.image.complete && this.imageContainer.contains(e.target)) {
+                    const coords = getImagePixelCoordinates(e, this.image, this.zoomFactor);
+                    if (this.coordinateDisplay) {
+                        this.coordinateDisplay.textContent = `Mouse: X: ${coords.x}, Y: ${coords.y}`;
+                    }
                 }
+                return;
             }
-            
-            // Only handle panning if not using a tool
-            if (!this.isDragging) return;
             
             // Update pan offset when dragging
             this.panOffset.x = e.clientX - this.dragStart.x;
@@ -214,7 +213,7 @@ export class ImageHandler {
         window.addEventListener('mouseup', () => {
             if (this.isDragging) {
                 this.isDragging = false;
-                this.imageContainer.style.cursor = 'default';
+                this.imageContainer.style.cursor = this.panningEnabled ? 'default' : 'crosshair';
             }
         });
         
