@@ -335,7 +335,7 @@ function checkAndLogMouseMovement(currentPos) {
     
     // Log based on pixel coordinate distance
     if (distance > MOUSE_POSITION_TOLERANCE) {
-        logMessage(`Mouse moved (Canvas: ${Math.round(currentPos.x)},${Math.round(currentPos.y)} | Pixel: ${pixelCoords.x},${pixelCoords.y}) - Dist: ${distance.toFixed(1)}px`);
+        // DEBUG: Temporarily disabled mouse move logging // logMessage(`Mouse moved (Canvas: ${Math.round(currentPos.x)},${Math.round(currentPos.y)} | Pixel: ${pixelCoords.x},${pixelCoords.y}) - Dist: ${distance.toFixed(1)}px`);
         lastLoggedMousePosition = pixelCoords; 
         
         // Update coordinates in UI with IMAGE PIXEL coordinates
@@ -427,12 +427,20 @@ function setupCursorTrailTracking(canvas) {
         // Check if left button is pressed using options.e.buttons
         const leftButtonPressed = options.e.buttons === 1;
         
-        // Log occasionally to avoid spamming
-        if (Math.random() < 0.01) {
-            logMessage(`Mouse move event: buttons=${options.e.buttons}, isMouseDown=${isMouseDown}, cursorTrailEnabled=${window.cursorTrailEnabled}`, 'DEBUG');
+        // Determine if laser pointer tool is the currently selected one
+        // This check should rely on the state managed by app.js or DrawingTools
+        // Example (replace with actual implementation): 
+        const isLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
+
+        // Only add point to event if laser tool is active and mouse is down
+        if (isLaserToolActive && (isMouseDown || leftButtonPressed)) {
+            // *** NEW: Add point to laser event ***
+            if (typeof window.addLaserPointerPoint === 'function') {
+                window.addLaserPointerPoint(options);
+            }
         }
-        
-        // Only update cursor trail if mouse button is down and trail is enabled
+
+        // Only update cursor trail visualization if mouse button is down and trail is generally enabled
         if ((isMouseDown || leftButtonPressed) && window.cursorTrailEnabled) {
             updateCursorTrail(pointer);
         }
@@ -443,59 +451,49 @@ function setupCursorTrailTracking(canvas) {
         // Only activate for left mouse button (button 0)
         if (options.e.button === 0) {
             isMouseDown = true;
+            const pointer = canvas.getPointer(options.e);
+
+            // Determine if laser pointer tool is active
+            const isLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
+
+            // *** NEW: Start laser pointer event ***
+            if (isLaserToolActive && typeof window.startLaserPointerEvent === 'function') {
+                window.startLaserPointerEvent(options);
+            }
             
-            // Only enable trail if the user has enabled it via the checkbox
+            // Only enable trail visualization if the user has enabled it via the checkbox
             if (window.cursorTrailEnabled) {
                 showCursorTail = true;
                 window.showCursorTail = true;
                 updateCursorTrailStatus(true);
-                
-                // Clear previous trail when starting new one
                 clearCursorTrail();
-                
-                // Initial point at mouse down position
-                const pointer = canvas.getPointer(options.e);
-                
-                // Log detailed info about the mouse down event
-                logMessage(`Mouse down detected - x:${Math.round(pointer.x)}, y:${Math.round(pointer.y)}, button:${options.e.button}`, 'INFO');
-                
-                updateCursorTrail(pointer);
-                
-                // IMPORTANT: Directly send mouse down event to recording system
-                if (typeof window.captureMouseDownDirect === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
-                    window.captureMouseDownDirect(pointer.x, pointer.y, options.e.button);
-                    logMessage(`Sent mouse down to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
-                } else {
-                    logMessage('NOT sending mouse down to recording system - recording inactive or function unavailable', 'DEBUG');
-                }
-                
-                logMessage('Mouse down - cursor trail activated', 'DEBUG');
+                updateCursorTrail(pointer); // Render initial point
+                logMessage('Mouse down - cursor trail visualization activated', 'DEBUG');
             } else {
-                logMessage('Mouse down - cursor trail disabled by user preference', 'DEBUG');
+                logMessage('Mouse down - cursor trail visualization disabled by user preference', 'DEBUG');
             }
         }
     });
     
     // Disable cursor trail when mouse button released
     canvas.on('mouse:up', function(options) {
-        isMouseDown = false;
-        
-        if (window.cursorTrailEnabled) {
-            showCursorTail = false;
-            window.showCursorTail = false;
-            updateCursorTrailStatus(false, true); // Pass true to indicate it's ready state
-            
-            // IMPORTANT: Directly send mouse up event to recording system
-            if (typeof window.captureMouseUpDirect === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
-                const pointer = canvas.getPointer(options.e);
-                window.captureMouseUpDirect(pointer.x, pointer.y, options.e.button);
-                logMessage(`Sent mouse up to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+        if (options.e.button === 0) { // Only care about left button release
+            isMouseDown = false;
+
+            // *** NEW: Finalize laser pointer event ***
+            // Check if the laser tool was active just before mouse up
+            const wasLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
+            if (wasLaserToolActive && typeof window.finalizeLaserPointerEvent === 'function') {
+                window.finalizeLaserPointerEvent(options);
             }
-            
-            // Clear the trail when mouse button released
-            clearCursorTrail();
-            
-            logMessage('Mouse up - cursor trail deactivated', 'DEBUG');
+
+            if (window.cursorTrailEnabled) {
+                showCursorTail = false;
+                window.showCursorTail = false;
+                updateCursorTrailStatus(false, true); // Pass true to indicate it's ready state
+                clearCursorTrail(); // Clear the visual trail
+                logMessage('Mouse up - cursor trail visualization deactivated', 'DEBUG');
+            }
         }
     });
     

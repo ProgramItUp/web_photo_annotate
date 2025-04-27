@@ -5,6 +5,7 @@
 
 // State for laser pointer trail
 let currentLaserTrail = null;
+let activeLaserEvent = null;  // Reference to the current laser event being recorded
 
 // State variables
 let boundingBoxActive = false;
@@ -14,6 +15,9 @@ let activeBoundingBox = null; // Track the active (completed) bounding box
 let boundingbox_mode = 'corners'; // Use a single variable for mode: 'corners' or 'pointer'
 let pointerDragging = false; // Track if we're currently dragging in pointer mode
 let minX, minY, maxX, maxY; // Min and max coordinates for pointer mode
+let activeBoundingBoxEvent = null; // Reference to the current bbox event being recorded
+let lastRecordedBoxTime = 0; // For throttling intermediate points
+let lastRecordedBoxPos = { x: 0, y: 0 }; // For throttling intermediate points
 
 /**
  * Show laser pointer usage notification
@@ -71,7 +75,6 @@ function startLaserTrail() {
     
     // Initialize trail points array for this session
     window.currentLaserTrail = [];
-    currentLaserTrail = [];
     
     if (typeof logMessage === 'function') {
         logMessage('Laser pointer trail initialized', 'DEBUG');
@@ -94,7 +97,6 @@ function addToLaserTrail(x, y) {
     // Initialize the trail array if it doesn't exist
     if (!window.currentLaserTrail) {
         window.currentLaserTrail = [];
-        currentLaserTrail = [];
         if (typeof logMessage === 'function') {
             logMessage('Initializing laser trail array', 'DEBUG');
         }
@@ -108,18 +110,13 @@ function addToLaserTrail(x, y) {
     };
     
     window.currentLaserTrail.push(point);
-    currentLaserTrail.push(point);
     
-    // Keep only the last 20 points to avoid performance issues
+    // Keep only the last 20 points to avoid performance issues (in the data array)
     if (window.currentLaserTrail.length > 20) {
         window.currentLaserTrail.shift();
     }
     
-    if (currentLaserTrail.length > 20) {
-        currentLaserTrail.shift();
-    }
-    
-    // Draw the trail
+    // Draw the trail (will now only add the newest point visually)
     drawLaserTrail();
 }
 
@@ -135,56 +132,54 @@ function drawLaserTrail() {
         return;
     }
     
-    // Use either the window-level or local trail data
-    const trail = window.currentLaserTrail || currentLaserTrail;
+    // Use only the window-level trail data
+    const trail = window.currentLaserTrail; // <<< Use window scope only
     
     if (!trail || trail.length === 0) {
         // Nothing to draw
         return;
     }
     
-    // Clear current trail
-    trailContainer.innerHTML = '';
+    // --- MODIFICATION START: Don't clear, just add newest point ---
+    // trailContainer.innerHTML = ''; // <<< REMOVED Line: Don't clear current trail
     
-    // Get the cursor size from global setting or use a default
+    // Get the *newest* point added
+    const newestPoint = trail[trail.length - 1];
+    if (!newestPoint) return; 
+    
     const cursorSize = window.cursorSize || 10;
-    
-    // Get current time for aging calculation
     const now = Date.now();
     
-    // Draw each point in the trail with opacity and size based on position and age
-    trail.forEach((point, index, array) => {
+    // Draw ONLY the newest point
         const pointElement = document.createElement('div');
         pointElement.className = 'laser-trail-point';
         
-        // Calculate position in trail (0 to 1, where 1 is newest)
-        const positionFactor = index / (array.length - 1);
-        
-        // Calculate age factor (1 is fresh, 0 is old)
-        const AGE_DURATION = 1000; // 1 second until fully faded
-        const age = point.time ? now - point.time : 0;
-        const ageFactor = Math.max(0, 1 - (age / AGE_DURATION));
-        
-        // Combine position and age for final opacity
-        const opacity = Math.min(0.9, 0.1 + (positionFactor * 0.7) * ageFactor);
-        
-        // Calculate size - newer points should be larger
-        const baseSize = cursorSize * 0.5; // Smallest size
-        const maxSize = cursorSize; // Largest size
-        const size = baseSize + positionFactor * (maxSize - baseSize) * ageFactor;
-        
-        // Style the point - make it more visible with drop shadow and border
+    // Calculate style based on age (or just make it fully visible initially)
+    const opacity = 0.9; // Start fully visible
+    const size = cursorSize; // Start at full size
+
         pointElement.style.width = `${size}px`;
         pointElement.style.height = `${size}px`;
-        pointElement.style.backgroundColor = `rgba(255, 30, 30, ${opacity})`; // Slightly brighter red
-        pointElement.style.left = `${point.x}px`;
-        pointElement.style.top = `${point.y}px`;
+    pointElement.style.backgroundColor = `rgba(255, 30, 30, ${opacity})`; 
+    pointElement.style.left = `${newestPoint.x}px`;
+    pointElement.style.top = `${newestPoint.y}px`;
         pointElement.style.boxShadow = `0 0 ${Math.round(size/2)}px rgba(255, 0, 0, ${opacity * 0.8})`;
         pointElement.style.border = `1px solid rgba(255, 255, 255, ${opacity * 0.5})`;
+    // Add position absolute and transform to center the dot on the point
+    pointElement.style.position = 'absolute';
+    pointElement.style.borderRadius = '50%';
+    pointElement.style.transform = 'translate(-50%, -50%)';
+    pointElement.style.pointerEvents = 'none'; // Ensure it doesn't block interactions
         
         // Add to container
         trailContainer.appendChild(pointElement);
-    });
+
+    // --- TODO: Add logic to fade/remove older points ---
+    // We need a separate mechanism, maybe using requestAnimationFrame or setTimeout,
+    // to periodically iterate through the child elements of trailContainer
+    // and reduce their opacity / remove them based on age.
+    // For now, this will just accumulate points.
+    // --- MODIFICATION END ---
 }
 
 /**
@@ -197,7 +192,7 @@ function clearLaserTrail() {
     
     const trailContainer = document.getElementById('laser-trail-container');
     if (trailContainer) {
-        trailContainer.innerHTML = '';
+        trailContainer.innerHTML = ''; // <<< Ensure this clears the visuals
     } else {
         if (typeof logMessage === 'function') {
             logMessage('Warning: Laser trail container not found for clearing', 'WARN');
@@ -205,7 +200,6 @@ function clearLaserTrail() {
     }
     
     window.currentLaserTrail = null;
-    currentLaserTrail = null;
 }
 
 /**
@@ -249,6 +243,7 @@ function createReplayCursor() {
     
     // Show the cursor
     cursor.style.display = 'block';
+    console.log('DEBUG: createReplayCursor function defined');
     return cursor;
 }
 
@@ -753,25 +748,15 @@ function initBoundingBox() {
     if (typeof logMessage === 'function') {
         logMessage('Initializing bounding box mode', 'DEBUG');
     }
-    
-    // Make sure the canvas is initialized
     if (!window.canvas) {
-        if (typeof logMessage === 'function') {
-            logMessage('Canvas not available for bounding box', 'ERROR');
-        }
+        if (typeof logMessage === 'function') { logMessage('Canvas not available for bounding box', 'ERROR'); }
         return;
     }
-    
     boundingBoxActive = true;
-    
-    // Set up the canvas for bounding box creation
     window.canvas.on('mouse:down', handleBoundingBoxMouseDown);
     window.canvas.on('mouse:move', handleBoundingBoxMouseMove);
     window.canvas.on('mouse:up', handleBoundingBoxMouseUp);
-    
-    if (typeof logMessage === 'function') {
-        logMessage('Bounding box mode activated', 'INFO');
-    }
+    if (typeof logMessage === 'function') { logMessage('Bounding box mode activated', 'INFO'); }
 }
 
 /**
@@ -779,21 +764,18 @@ function initBoundingBox() {
  */
 function deactivateBoundingBox() {
     boundingBoxActive = false;
-    
-    // Remove event listeners
     if (window.canvas) {
         window.canvas.off('mouse:down', handleBoundingBoxMouseDown);
         window.canvas.off('mouse:move', handleBoundingBoxMouseMove);
         window.canvas.off('mouse:up', handleBoundingBoxMouseUp);
     }
-    
-    // Clear references but don't remove existing box
     currentBoundingBox = null;
     boundingBoxStartPoint = null;
-    
-    if (typeof logMessage === 'function') {
-        logMessage('Bounding box mode deactivated', 'INFO');
+    // Complete any active bounding box event if mouse up didn't fire properly
+    if (activeBoundingBoxEvent) {
+        finalizeBoundingBoxEvent(activeBoundingBoxEvent.final_coords || null); // Use last known coords or null
     }
+    if (typeof logMessage === 'function') { logMessage('Bounding box mode deactivated', 'INFO'); }
 }
 
 /**
@@ -824,24 +806,54 @@ function showBoundingBoxNotification() {
 }
 
 /**
- * Handle mouse down event for bounding box
+ * Handle mouse down event for bounding box - Starts recording a new event.
  * @param {Event} event - Fabric.js mouse event
  */
-function handleBoundingBoxMouseDown(event) {
+function handleBoundingBoxMouseDown(options) {
     if (!boundingBoxActive) return;
-    
-    // Get canvas pointer coordinates
-    const pointer = window.canvas.getPointer(event.e);
-    
-    // In pointer mode, capture start of drag and initialize min/max values
+    const pointer = window.canvas.getPointer(options.e);
+
+    // *** START NEW RECORDING EVENT ***
+    if (typeof window.isRecording === 'function' && window.isRecording() && !window.isPaused()) {
+        const now = Date.now();
+        const timeOffset = window.getCurrentRecordingTime();
+        activeBoundingBoxEvent = {
+            event_id: `bbox_${now}`,
+            mode: boundingbox_mode,
+            start_time_offset: timeOffset,
+            end_time_offset: null,
+            duration_ms: null,
+            intermediate_coords: [],
+            final_coords: null
+        };
+        // Add initial point to intermediate coords
+        activeBoundingBoxEvent.intermediate_coords.push({
+            timeOffset: timeOffset,
+            left: pointer.x,
+            top: pointer.y,
+            width: 0,
+            height: 0
+        });
+        // Ensure category exists
+        if (!window.recordedEvents.bounding_box) {
+            window.recordedEvents.bounding_box = [];
+        }
+        window.recordedEvents.bounding_box.push(activeBoundingBoxEvent);
+        logMessage(`Started recording bounding_box event ${activeBoundingBoxEvent.event_id} (mode: ${boundingbox_mode})`, 'DEBUG');
+
+        // Reset throttling variables
+        lastRecordedBoxTime = now;
+        lastRecordedBoxPos = { x: pointer.x, y: pointer.y };
+    } else {
+        activeBoundingBoxEvent = null; // Not recording
+    }
+    // *** END NEW RECORDING EVENT ***
+
+    // --- Existing Logic for Drawing/Pointer Mode --- //
     if (boundingbox_mode === 'pointer') {
         pointerDragging = true;
-        
-        // Initialize min/max with starting point
         minX = maxX = pointer.x;
         minY = maxY = pointer.y;
-        
-        // If there's no active bounding box, create one
         if (!activeBoundingBox) {
             activeBoundingBox = new fabric.Rect({
                 left: pointer.x,
@@ -860,51 +872,11 @@ function handleBoundingBoxMouseDown(event) {
                 cornerStyle: 'circle',
                 lockRotation: true
             });
-            
             window.canvas.add(activeBoundingBox);
         }
-        
-        if (typeof logMessage === 'function') {
-            logMessage(`Pointer mode: Started tracking at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
-        }
-        
-        // Capture the event for recording if recording is active
-        if (typeof window.captureMouseDownDirect === 'function') {
-            const boxData = {
-                isBoundingBox: true,
-                boundingbox_mode: boundingbox_mode,
-                // Initial empty box coordinates
-                boxCoords: {
-                    left: pointer.x,
-                    top: pointer.y,
-                    width: 0,
-                    height: 0
-                }
-            };
-            
-            window.captureMouseDownDirect(pointer.x, pointer.y, 0, boxData);
-            
-            if (typeof logMessage === 'function') {
-                logMessage(`Sent bounding box DOWN event to recording system: mode=${boundingbox_mode}`, 'DEBUG');
-            }
-        }
-        
-        return;
-    }
-    
-    // Only proceed with drawing in corners mode
-    if (boundingbox_mode !== 'corners') return;
-    
-    // Remove any existing bounding box before creating a new one
+    } else { // corners mode
     removeExistingBoundingBox();
-    
-    // Store the starting point
-    boundingBoxStartPoint = {
-        x: pointer.x,
-        y: pointer.y
-    };
-    
-    // Create a new bounding box
+        boundingBoxStartPoint = { x: pointer.x, y: pointer.y };
     currentBoundingBox = new fabric.Rect({
         left: pointer.x,
         top: pointer.y,
@@ -928,503 +900,140 @@ function handleBoundingBoxMouseDown(event) {
         lockScalingY: false,
         lockUniScaling: false
     });
-    
-    // Add the box to the canvas
     window.canvas.add(currentBoundingBox);
-    
-    if (typeof logMessage === 'function') {
-        logMessage(`Started drawing bounding box at (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
+    }
+    // --- End Existing Logic --- //
     }
     
-    // Capture the event for recording if recording is active
-    if (typeof window.captureMouseDownDirect === 'function') {
-        const boxData = {
-            isBoundingBox: true,
-            boundingbox_mode: boundingbox_mode,
-            // Include initial empty box coordinates for consistency
-            boxCoords: {
-                left: pointer.x,
-                top: pointer.y,
-                width: 0,
-                height: 0
-            }
-        };
-        
-        window.captureMouseDownDirect(pointer.x, pointer.y, 0, boxData);
-        
-        if (typeof logMessage === 'function') {
-            logMessage(`Sent bounding box DOWN event to recording system: mode=${boundingbox_mode}`, 'DEBUG');
-        }
-    }
-}
-
 /**
- * Handle mouse move event for bounding box
+ * Handle mouse move event for bounding box - Adds intermediate points to active event.
  * @param {Event} event - Fabric.js mouse event
  */
-function handleBoundingBoxMouseMove(event) {
+function handleBoundingBoxMouseMove(options) {
     if (!boundingBoxActive) return;
+    const pointer = window.canvas.getPointer(options.e);
+    let currentCoords = null;
     
-    // Get canvas pointer coordinates
-    const pointer = window.canvas.getPointer(event.e);
-    
-    // In pointer mode, update min/max coordinates and bounding box
+    // --- Existing Logic for Drawing/Pointer Mode Update --- //
     if (boundingbox_mode === 'pointer' && pointerDragging) {
-        // Update min/max values based on current pointer position
-        minX = Math.min(minX, pointer.x);
-        maxX = Math.max(maxX, pointer.x);
-        minY = Math.min(minY, pointer.y);
-        maxY = Math.max(maxY, pointer.y);
-        
-        // Update bounding box with new min/max values
+        minX = Math.min(minX, pointer.x); maxX = Math.max(maxX, pointer.x);
+        minY = Math.min(minY, pointer.y); maxY = Math.max(maxY, pointer.y);
         if (activeBoundingBox) {
-            activeBoundingBox.set({
-                left: minX,
-                top: minY,
-                width: maxX - minX,
-                height: maxY - minY
-            });
-            
-            // Refresh the canvas
+            activeBoundingBox.set({ left: minX, top: minY, width: maxX - minX, height: maxY - minY });
             window.canvas.renderAll();
         }
-        
-        // Update coordinates display
-        updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
-        
-        // Occasionally log the current min/max values
-        if (Math.random() < 0.05 && typeof logMessage === 'function') {
-            logMessage(`Pointer tracking: min(${Math.round(minX)},${Math.round(minY)}) max(${Math.round(maxX)},${Math.round(maxY)})`, 'DEBUG');
-        }
-        
-        // Capture the event for recording if recording is active
-        if (typeof window.updateCursorTrailPosition === 'function') {
-            window.updateCursorTrailPosition(pointer.x, pointer.y, {
-                isBoundingBox: true,
-                boundingbox_mode: boundingbox_mode,
-                boxCoords: {
-                    left: minX,
-                    top: minY,
-                    width: maxX - minX,
-                    height: maxY - minY
-                }
-            });
-        }
-        
-        return;
-    }
-    
-    // Only proceed with drawing in corners mode
-    if (boundingbox_mode !== 'corners' || !currentBoundingBox || !boundingBoxStartPoint) return;
-    
-    // Calculate width and height based on mouse position
+        currentCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+    } else if (boundingbox_mode === 'corners' && currentBoundingBox && boundingBoxStartPoint) {
     let width = pointer.x - boundingBoxStartPoint.x;
     let height = pointer.y - boundingBoxStartPoint.y;
-    
-    // Handle negative dimensions (dragging left or up)
-    if (width < 0) {
-        currentBoundingBox.set('left', pointer.x);
-        width = Math.abs(width);
-    }
-    
-    if (height < 0) {
-        currentBoundingBox.set('top', pointer.y);
-        height = Math.abs(height);
-    }
-    
-    // Update the bounding box dimensions
-    currentBoundingBox.set({
-        width: width,
-        height: height
-    });
-    
-    // Refresh the canvas
+        let left = boundingBoxStartPoint.x;
+        let top = boundingBoxStartPoint.y;
+        if (width < 0) { left = pointer.x; width = Math.abs(width); }
+        if (height < 0) { top = pointer.y; height = Math.abs(height); }
+        currentBoundingBox.set({ left: left, top: top, width: width, height: height });
     window.canvas.renderAll();
-    
-    // Update coordinates display
+        currentCoords = { left: left, top: top, width: width, height: height };
+    } else {
+        return; // Not drawing or dragging
+    }
     updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
-    
-    // Log occasionally to prevent spam
-    if (Math.random() < 0.05 && typeof logMessage === 'function') {
-        logMessage(`Drawing bounding box: width=${Math.round(width)}, height=${Math.round(height)}`, 'DEBUG');
+    // --- End Existing Logic --- //
+
+    // *** RECORD INTERMEDIATE POINT (Throttled) ***
+    if (activeBoundingBoxEvent && currentCoords) {
+        const now = Date.now();
+        const timeOffset = window.getCurrentRecordingTime();
+        const timeDiff = now - lastRecordedBoxTime;
+        const distDiff = Math.sqrt(Math.pow(pointer.x - lastRecordedBoxPos.x, 2) + Math.pow(pointer.y - lastRecordedBoxPos.y, 2));
+
+        // Check config constants (use window scope or pass them in)
+        const interval = window.BOUNDING_BOX_RECORD_INTERVAL_MS || 100;
+        const threshold = window.BOUNDING_BOX_RECORD_PIXEL_THRESHOLD || 5;
+
+        if (timeDiff >= interval || distDiff >= threshold) {
+            activeBoundingBoxEvent.intermediate_coords.push({
+                timeOffset: timeOffset,
+                left: currentCoords.left,
+                top: currentCoords.top,
+                width: currentCoords.width,
+                height: currentCoords.height
+            });
+            lastRecordedBoxTime = now;
+            lastRecordedBoxPos = { x: pointer.x, y: pointer.y };
+            // logMessage(`Recorded intermediate bbox coord (#${activeBoundingBoxEvent.intermediate_coords.length})`, 'DEBUG');
     }
-    
-    // Capture the event for recording if recording is active
-    if (typeof window.updateCursorTrailPosition === 'function') {
-        window.updateCursorTrailPosition(pointer.x, pointer.y, {
-            isBoundingBox: true,
-            boundingbox_mode: boundingbox_mode,
-            boxCoords: {
-                left: currentBoundingBox.left,
-                top: currentBoundingBox.top,
-                width: currentBoundingBox.width,
-                height: currentBoundingBox.height
-            }
-        });
     }
+    // *** END RECORD INTERMEDIATE POINT ***
 }
 
 /**
- * Handle mouse up event for bounding box
+ * Handle mouse up event for bounding box - Finalizes the active event.
  * @param {Event} event - Fabric.js mouse event
  */
-function handleBoundingBoxMouseUp(event) {
+function handleBoundingBoxMouseUp(options) {
     if (!boundingBoxActive) return;
+    const pointer = window.canvas.getPointer(options.e);
+    let finalCoords = null;
     
-    // Get canvas pointer coordinates
-    const pointer = window.canvas.getPointer(event.e);
-    
-    // In pointer mode, finalize the bounding box
+    // --- Existing Logic for Finalizing Draw/Pointer --- //
     if (boundingbox_mode === 'pointer' && pointerDragging) {
         pointerDragging = false;
-        
-        if (typeof logMessage === 'function') {
-            if (activeBoundingBox) {
-                logMessage(`Pointer mode: Bounding box updated to (${Math.round(minX)},${Math.round(minY)}) - (${Math.round(maxX)},${Math.round(maxY)})`, 'INFO');
-            }
-        }
-        
-        // Make sure the box has some minimum size
-        if (activeBoundingBox && (maxX - minX < 5 || maxY - minY < 5)) {
-            // Box is too small, consider removing it or resetting
-            if (typeof logMessage === 'function') {
-                logMessage('Bounding box too small, maintaining previous size', 'DEBUG');
-            }
-        } else if (activeBoundingBox) {
-            // Set the box as the active object
+        if (activeBoundingBox && (maxX - minX >= 5 && maxY - minY >= 5)) {
+            finalCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+            activeBoundingBox.set(finalCoords); // Ensure final update
             window.canvas.setActiveObject(activeBoundingBox);
+        } else if (activeBoundingBox) {
+            // Too small or invalid, remove visual
+            window.canvas.remove(activeBoundingBox);
+            activeBoundingBox = null;
         }
-        
-        // Define box coordinates for recording
-        const boxCoords = activeBoundingBox ? {
-            left: activeBoundingBox.left,
-            top: activeBoundingBox.top,
-            width: activeBoundingBox.width,
-            height: activeBoundingBox.height
-        } : null;
-        
-        // Capture the event for recording if recording is active
-        if (typeof window.captureMouseUpDirect === 'function') {
-            const boxData = {
-                isBoundingBox: true,
-                boundingbox_mode: boundingbox_mode,
-                boxCoords: boxCoords
-            };
-            
-            window.captureMouseUpDirect(pointer.x, pointer.y, 0, boxData);
-            
-            if (typeof logMessage === 'function') {
-                logMessage(`Sent bounding box UP event to recording system: mode=${boundingbox_mode}`, 'DEBUG');
-                if (boxCoords) {
-                    logMessage(`Final box dimensions: ${Math.round(boxCoords.width)}x${Math.round(boxCoords.height)}`, 'DEBUG');
-                }
-            }
+    } else if (boundingbox_mode === 'corners' && currentBoundingBox) {
+        if (currentBoundingBox.width >= 5 && currentBoundingBox.height >= 5) {
+            finalCoords = { left: currentBoundingBox.left, top: currentBoundingBox.top, width: currentBoundingBox.width, height: currentBoundingBox.height };
+            activeBoundingBox = currentBoundingBox; // Keep the drawn box
+            window.canvas.setActiveObject(activeBoundingBox);
+        } else {
+            window.canvas.remove(currentBoundingBox); // Too small
         }
-        
-        // Refresh the canvas
-        window.canvas.renderAll();
-        
-        return;
-    }
-    
-    // Only proceed with corners mode
-    if (boundingbox_mode !== 'corners' || !currentBoundingBox) return;
-    
-    if (typeof logMessage === 'function') {
-        logMessage(`Completed bounding box: width=${Math.round(currentBoundingBox.width)}, height=${Math.round(currentBoundingBox.height)}`, 'INFO');
-    }
-    
-    // Store box coordinates before potentially removing it
-    const boxCoords = {
-        left: currentBoundingBox.left,
-        top: currentBoundingBox.top,
-        width: currentBoundingBox.width,
-        height: currentBoundingBox.height
-    };
-    
-    // Make sure the box has some minimum size
-    if (currentBoundingBox.width < 5 || currentBoundingBox.height < 5) {
-        // Box is too small, remove it
-        window.canvas.remove(currentBoundingBox);
-        if (typeof logMessage === 'function') {
-            logMessage('Bounding box too small, removed', 'DEBUG');
-        }
-        
-        // Reset tracking variables
         currentBoundingBox = null;
         boundingBoxStartPoint = null;
-        activeBoundingBox = null; // No active box
     } else {
-        // Set the current box as the active bounding box
-        activeBoundingBox = currentBoundingBox;
-        
-        // Set the box as the active object so it can be immediately resized
-        window.canvas.setActiveObject(currentBoundingBox);
-        
-        // Reset drawing state
-        currentBoundingBox = null;
-        boundingBoxStartPoint = null;
+        return; // Mouse up without active drawing/dragging
     }
-    
-    // Capture the event for recording if recording is active
-    if (typeof window.captureMouseUpDirect === 'function') {
-        const boxData = {
-            isBoundingBox: true,
-            boundingbox_mode: boundingbox_mode,
-            boxCoords: boxCoords
-        };
-        
-        window.captureMouseUpDirect(pointer.x, pointer.y, 0, boxData);
-        
-        if (typeof logMessage === 'function') {
-            logMessage(`Sent bounding box UP event to recording system: width=${Math.round(boxCoords.width)}, height=${Math.round(boxCoords.height)}`, 'DEBUG');
-        }
-    }
-    
-    // Refresh the canvas
     window.canvas.renderAll();
-}
+    // --- End Existing Logic --- //
 
-// Add hook to capture cursor trail updates directly
-window.updateCursorTrailPosition = function(x, y, extraData = {}) {
-    // Check if recording is active using the global functions
-    if (typeof window.isRecording !== 'function' || typeof window.isPaused !== 'function') {
-        return;
-    }
-    
-    // If we are recording, also store this position in the mouse data
-    if (window.isRecording() && !window.isPaused()) {
-        const now = Date.now();
-        // Don't throttle laser pointer movements for better trail quality
-        const isBoundingBox = !!extraData.isBoundingBox;
-        
-        // IMPORTANT: For bounding box events, don't mark them as laser pointer events
-        const isLaserActive = isBoundingBox ? false : (extraData.isLaserPointer || false); 
-        
-        // Get elapsed recording time
-        const elapsedTimeMs = typeof window.getCurrentRecordingTime === 'function' ? 
-            window.getCurrentRecordingTime() : now;
-        
-        // Ensure x and y are valid numbers
-        if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-            console.error(`Invalid cursor position: x=${x}, y=${y}`);
-            return;
+    // *** FINALIZE RECORDING EVENT ***
+    finalizeBoundingBoxEvent(finalCoords);
+    // *** END FINALIZE RECORDING EVENT ***
         }
         
-        // Process extraData to ensure consistent format for bounding box data
-        let boxData = null;
-        
-        if (isBoundingBox) {
-            // Format box coordinates consistently if they exist
-            if (extraData.boxCoords) {
-                boxData = {
-                    left: extraData.boxCoords.left || 0,
-                    top: extraData.boxCoords.top || 0,
-                    width: extraData.boxCoords.width || 0,
-                    height: extraData.boxCoords.height || 0
-                };
-                
-                // Occasionally log bound box move events
-                if (Math.random() < 0.05 && typeof logMessage === 'function') {
-                    logMessage(`Recording bounding box MOVE: mode=${extraData.boundingbox_mode || 'corners'}, at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
-                }
-            }
-        }
-        
-        // Store mouse data with timestamp if the global mouseData array exists
-        if (window.mouseData && Array.isArray(window.mouseData)) {
-            window.mouseData.push({
-                type: 'move',
-                x: x,
-                y: y,
-                timeOffset: elapsedTimeMs, // Time in ms from recording start
-                realTime: now,
-                isLaserPointer: isLaserActive,
-                isBoundingBox: isBoundingBox,
-                boundingbox_mode: isBoundingBox ? extraData.boundingbox_mode || 'corners' : undefined,
-                boxCoords: boxData,
-                source: 'cursorTrail' // Mark the source of this data point
+/**
+ * Helper to finalize the active bounding box event.
+ * @param {Object|null} finalCoords - The final coordinates, or null if box was invalid.
+ */
+function finalizeBoundingBoxEvent(finalCoords) {
+    if (activeBoundingBoxEvent) {
+        const endTimeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now();
+        activeBoundingBoxEvent.end_time_offset = endTimeOffset;
+        activeBoundingBoxEvent.duration_ms = endTimeOffset - activeBoundingBoxEvent.start_time_offset;
+        activeBoundingBoxEvent.final_coords = finalCoords; // Store final coords or null
+
+        // Add final state to intermediate coords for consistency if it exists
+        if (finalCoords) {
+             activeBoundingBoxEvent.intermediate_coords.push({
+                timeOffset: endTimeOffset,
+                left: finalCoords.left,
+                top: finalCoords.top,
+                width: finalCoords.width,
+                height: finalCoords.height
             });
-            
-            // Log occasionally to prevent log spam
-            if (now % 1000 < 20 && typeof logMessage === 'function') {
-                logMessage(`Captured cursor trail position: X: ${Math.round(x)}, Y: ${Math.round(y)}`, 'DEBUG');
-                logMessage(`Total mouse data points: ${window.mouseData.length}`, 'DEBUG');
-            }
-        }
-    }
-};
-
-// Direct mouse event capture functions for cursor trail system
-window.captureMouseDownDirect = function(x, y, button, extraData = {}) {
-    // Check if recording is active using the global functions
-    if (typeof window.isRecording !== 'function' || typeof window.isPaused !== 'function') {
-        return;
-    }
-    
-    if (!window.isRecording() || window.isPaused()) return;
-    
-    // Ensure coordinates are valid
-    if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-        console.error(`Invalid mouse down position: x=${x}, y=${y}`);
-        return;
-    }
-    
-    const now = Date.now();
-    const elapsedTimeMs = typeof window.getCurrentRecordingTime === 'function' ? 
-        window.getCurrentRecordingTime() : now;
-    
-    // Process extraData to ensure consistent format for bounding box data
-    const isBoundingBox = !!extraData.isBoundingBox;
-    let boxData = null;
-    
-    if (isBoundingBox) {
-        // Ensure we have the mode
-        const mode = extraData.boundingbox_mode || 'corners';
-        
-        // Format box coordinates consistently if they exist
-        if (extraData.boxCoords) {
-            boxData = {
-                left: extraData.boxCoords.left || 0,
-                top: extraData.boxCoords.top || 0,
-                width: extraData.boxCoords.width || 0,
-                height: extraData.boxCoords.height || 0
-            };
         }
         
-        if (typeof logMessage === 'function') {
-            logMessage(`Recording bounding box DOWN: mode=${mode}, at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
-        }
+        logMessage(`Finalized bounding_box event ${activeBoundingBoxEvent.event_id}. Valid: ${!!finalCoords}`, 'DEBUG');
+        activeBoundingBoxEvent = null; // Clear active event reference
     }
-    
-    // Log that we're capturing this event
-    if (typeof logMessage === 'function') {
-        logMessage(`Direct capture of mouse down: X: ${Math.round(x)}, Y: ${Math.round(y)}, button: ${button}`, 'DEBUG');
-    }
-    
-    // Store in mouse data if the global mouseData array exists
-    if (window.mouseData && Array.isArray(window.mouseData)) {
-        // IMPORTANT: For bounding box events, we should NOT mark them as laser pointer events
-        // This prevents confusion during replay
-        const isLaserPointerEvent = isBoundingBox ? false : (extraData.isLaserPointer || false);
-        
-        // Create a clean object to ensure no circular references or unexpected properties
-        const eventData = {
-            type: 'down',
-            button: button,
-            x: x,
-            y: y,
-            timeOffset: elapsedTimeMs,
-            realTime: now,
-            isLaserPointer: isLaserPointerEvent,
-            // Explicitly set bounding box properties to ensure they're included
-            isBoundingBox: isBoundingBox,
-            boundingbox_mode: isBoundingBox ? extraData.boundingbox_mode || 'corners' : undefined,
-            boxCoords: boxData,
-            source: 'direct' // Mark the source
-        };
-        
-        // Add to the mouse data array
-        window.mouseData.push(eventData);
-        
-        if (typeof logMessage === 'function') {
-            logMessage(`Mouse DOWN event recorded at ${elapsedTimeMs}ms (data point #${window.mouseData.length})`, 'DEBUG');
-            
-            // Add additional debug info for bounding box events
-            if (isBoundingBox) {
-                logMessage(`Added bounding box DOWN event: isBoundingBox=${isBoundingBox}, mode=${eventData.boundingbox_mode}`, 'DEBUG');
-            }
-        }
-    }
-};
-
-window.captureMouseUpDirect = function(x, y, button, extraData = {}) {
-    // Check if recording is active using the global functions
-    if (typeof window.isRecording !== 'function' || typeof window.isPaused !== 'function') {
-        return;
-    }
-    
-    if (!window.isRecording() || window.isPaused()) return;
-    
-    // Ensure coordinates are valid
-    if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-        console.error(`Invalid mouse up position: x=${x}, y=${y}`);
-        return;
-    }
-    
-    const now = Date.now();
-    const elapsedTimeMs = typeof window.getCurrentRecordingTime === 'function' ? 
-        window.getCurrentRecordingTime() : now;
-    
-    // Process extraData to ensure consistent format for bounding box data
-    const isBoundingBox = !!extraData.isBoundingBox;
-    let boxData = null;
-    
-    if (isBoundingBox) {
-        // Ensure we have the mode
-        const mode = extraData.boundingbox_mode || 'corners';
-        
-        // Format box coordinates consistently if they exist
-        if (extraData.boxCoords) {
-            boxData = {
-                left: extraData.boxCoords.left || 0,
-                top: extraData.boxCoords.top || 0,
-                width: extraData.boxCoords.width || 0,
-                height: extraData.boxCoords.height || 0
-            };
-        }
-        
-        if (typeof logMessage === 'function') {
-            logMessage(`Recording bounding box UP: mode=${mode}, at (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
-            if (boxData) {
-                logMessage(`Box dimensions: ${Math.round(boxData.width)}x${Math.round(boxData.height)}`, 'DEBUG');
-            }
-        }
-    }
-    
-    // Log that we're capturing this event
-    if (typeof logMessage === 'function') {
-        logMessage(`Direct capture of mouse up: X: ${Math.round(x)}, Y: ${Math.round(y)}, button: ${button}`, 'DEBUG');
-    }
-    
-    // Store in mouse data if the global mouseData array exists
-    if (window.mouseData && Array.isArray(window.mouseData)) {
-        // IMPORTANT: For bounding box events, we should NOT mark them as laser pointer events
-        // This prevents confusion during replay
-        const isLaserPointerEvent = isBoundingBox ? false : (extraData.isLaserPointer || false);
-        
-        // Create a clean object to ensure no circular references or unexpected properties
-        const eventData = {
-            type: 'up',
-            button: button,
-            x: x,
-            y: y,
-            timeOffset: elapsedTimeMs,
-            realTime: now,
-            isLaserPointer: isLaserPointerEvent,
-            // Explicitly set bounding box properties to ensure they're included
-            isBoundingBox: isBoundingBox,
-            boundingbox_mode: isBoundingBox ? extraData.boundingbox_mode || 'corners' : undefined,
-            boxCoords: boxData,
-            source: 'direct' // Mark the source
-        };
-        
-        // Add to the mouse data array
-        window.mouseData.push(eventData);
-        
-        if (typeof logMessage === 'function') {
-            logMessage(`Mouse UP event recorded at ${elapsedTimeMs}ms (data point #${window.mouseData.length})`, 'DEBUG');
-            
-            // Add additional debug info for bounding box events
-            if (isBoundingBox) {
-                logMessage(`Added bounding box UP event: isBoundingBox=${isBoundingBox}, mode=${eventData.boundingbox_mode}`, 'DEBUG');
-                if (boxData) {
-                    logMessage(`Box final dimensions: ${Math.round(boxData.width)}x${Math.round(boxData.height)}`, 'DEBUG');
-                }
-            }
-        }
-    }
-};
+}
 
 /**
  * Check if bounding box mode is currently active
@@ -1556,7 +1165,85 @@ function debugBoundingBoxReplay() {
     }
 }
 
+// *** NEW Laser Pointer Event Recording Functions ***
+
+/**
+ * Starts recording a new laser pointer event.
+ * Called on mouse:down when the laser tool is active.
+ * @param {Object} options - Fabric.js event options containing pointer coordinates.
+ */
+function startLaserPointerEvent(options) {
+    if (!window.isRecording || !window.isRecording()) return; // Only record if recording is active
+    if (activeLaserEvent) {
+        logMessage('Warning: startLaserPointerEvent called while another event was active. Finalizing previous.', 'WARN');
+        finalizeLaserPointerEvent(options); // Finalize the previous one just in case
+    }
+
+    const pointer = window.canvas.getPointer(options.e);
+    const timeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now(); // Get current recording time
+
+    activeLaserEvent = {
+        event_id: `laser_${Date.now()}`,
+        start_time_offset: timeOffset,
+        end_time_offset: null,
+        duration_ms: null,
+        points: [
+            { x: pointer.x, y: pointer.y, timeOffset: timeOffset } // Record the starting point
+        ]
+    };
+
+    window.recordedEvents.laser_pointer.push(activeLaserEvent);
+    logMessage(`Started laser_pointer event ${activeLaserEvent.event_id} at offset ${timeOffset.toFixed(0)}ms`, 'DEBUG');
+}
+
+/**
+ * Adds a point to the currently active laser pointer event.
+ * Called on mouse:move when the laser tool is active.
+ * @param {Object} options - Fabric.js event options containing pointer coordinates.
+ */
+function addLaserPointerPoint(options) {
+    // Only add points if recording and an event is active
+    if (!window.isRecording || !window.isRecording() || !activeLaserEvent) return;
+
+    const pointer = window.canvas.getPointer(options.e);
+    const timeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now();
+
+    activeLaserEvent.points.push({
+        x: pointer.x,
+        y: pointer.y,
+        timeOffset: timeOffset
+    });
+    // Optional: Add throttling here if needed for performance
+}
+
+/**
+ * Finalizes the currently active laser pointer event.
+ * Called on mouse:up.
+ * @param {Object} options - Fabric.js event options containing pointer coordinates.
+ */
+function finalizeLaserPointerEvent(options) {
+    if (!activeLaserEvent) return; // No active event to finalize
+
+    const pointer = window.canvas.getPointer(options.e);
+    const timeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now();
+
+    // Add the final point
+    activeLaserEvent.points.push({
+        x: pointer.x,
+        y: pointer.y,
+        timeOffset: timeOffset
+    });
+
+    activeLaserEvent.end_time_offset = timeOffset;
+    activeLaserEvent.duration_ms = activeLaserEvent.end_time_offset - activeLaserEvent.start_time_offset;
+
+    logMessage(`Finalized laser_pointer event ${activeLaserEvent.event_id}. Duration: ${activeLaserEvent.duration_ms.toFixed(0)}ms, Points: ${activeLaserEvent.points.length}`, 'DEBUG');
+
+    activeLaserEvent = null; // Clear the active event reference
+}
+
 // Export functions for use in recording.js
+// document.addEventListener('DOMContentLoaded', function() { // <<< REMOVED WRAPPER
 window.DrawingTools = {
     showLaserPointerNotification,
     startLaserTrail,
@@ -1581,5 +1268,13 @@ window.DrawingTools = {
     getBoundingBoxMode,   // Export the new function
     getInitialBoxCoords,  // Export the new function
     getCurrentBoxCoords,  // Export the new function
-    debugBoundingBoxReplay // Export debug function
+    debugBoundingBoxReplay, // Export debug function
+    // Recording hooks (called by canvas event listeners)
+    startLaserPointerEvent,
+    addLaserPointerPoint,
+    finalizeLaserPointerEvent
 }; 
+// console.log('DEBUG: window.DrawingTools object assigned on DOMContentLoaded: ', window.DrawingTools);
+console.log('DEBUG: window.DrawingTools object assigned directly: ', window.DrawingTools);
+console.log('DEBUG: Keys assigned to window.DrawingTools:', Object.keys(window.DrawingTools || {}));
+// }); // <<< REMOVED WRAPPER 

@@ -12,7 +12,17 @@ let mediaRecorder = null;
 let audioStream = null;
 let isRecording = false;
 let isPaused = false;
-let mouseData = [];
+// let mouseData = []; // Old flat list
+let recordedEvents = { // New structured events object
+    initial_state: [],
+    audio_recording: [],
+    tool_change: [],
+    image_adjustments: [],
+    laser_pointer: [],
+    bounding_box: [],
+    // Add other categories as needed
+};
+window.recordedEvents = recordedEvents; // Expose to window if needed by other modules
 let audioChunks = [];
 let recordingTimerInterval = null;
 let recordingStartTime = 0;
@@ -29,7 +39,7 @@ const MOUSE_MOVE_CAPTURE_INTERVAL = 50; // Capture at most every 50ms (20 points
 // Expose recording state to other modules
 window.isRecording = function() { return isRecording; };
 window.isPaused = function() { return isPaused; };
-window.mouseData = mouseData;  // Make mouseData available to other modules
+// window.mouseData = mouseData; // Deprecated
 window.getCurrentRecordingTime = getCurrentRecordingTime; // Make this function available to drawingTools
 
 // The updateCursorTrailPosition function is now moved to drawingTools.js
@@ -498,7 +508,17 @@ function startAudioRecording() {
                 
                 // Clear existing data
                 audioChunks = [];
-                mouseData = [];
+                // Reset the recorded events structure
+                window.recordedEvents = {
+                    initial_state: [],
+                    audio_recording: [],
+                    tool_change: [],
+                    image_adjustments: [],
+                    laser_pointer: [],
+                    bounding_box: [],
+                };
+                // *** NEW: Record Initial State ***
+                recordInitialState(); // Call the new function here
                 
                 // Reset total recording time display
                 const totalRecordingTime = document.getElementById('total-recording-time');
@@ -506,8 +526,8 @@ function startAudioRecording() {
                     totalRecordingTime.textContent = '00:00';
                 }
                 
-                // Start capturing mouse data
-                startCaptureMouseData();
+                // Start capturing mouse data (needs refactoring later to generate events)
+                startCaptureMouseData(); // Keep this for now, will refactor later
                 
                 // Start recording
                 mediaRecorder.start();
@@ -517,6 +537,9 @@ function startAudioRecording() {
                 // Record the start time and reset paused time
                 recordingStartTime = Date.now();
                 pausedTime = 0;
+                
+                // Record the audio recording start event
+                recordAudioEvent('start');
                 
                 // Start timer updates
                 recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
@@ -671,7 +694,17 @@ function startAudioRecording() {
             
             // Clear existing data
             audioChunks = [];
-            mouseData = [];
+            // Reset the recorded events structure
+            window.recordedEvents = {
+                initial_state: [],
+                audio_recording: [],
+                tool_change: [],
+                image_adjustments: [],
+                laser_pointer: [],
+                bounding_box: [],
+            };
+            // *** NEW: Record Initial State ***
+            recordInitialState(); // Call the new function here
             
             // Reset total recording time display
             const totalRecordingTime = document.getElementById('total-recording-time');
@@ -679,8 +712,7 @@ function startAudioRecording() {
                 totalRecordingTime.textContent = '00:00';
             }
             
-            // Start capturing mouse data
-            startCaptureMouseData();
+            // Start capturing mouse data (needs refactoring later to generate events)
             
             // Start recording
             mediaRecorder.start();
@@ -690,6 +722,9 @@ function startAudioRecording() {
             // Record the start time and reset paused time
             recordingStartTime = Date.now();
             pausedTime = 0;
+            
+            // Record the audio recording start event
+            recordAudioEvent('start');
             
             // Start timer updates
             recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
@@ -779,7 +814,7 @@ function stopAudioRecording() {
     }
     
     // Stop capturing mouse data
-    stopCaptureMouseData();
+    
     
     // Stop volume meter
     stopVolumeMeter();
@@ -800,6 +835,9 @@ function stopAudioRecording() {
     isPaused = false;
     
     logMessage(`Recording ended with total duration: ${formattedTime}`, 'INFO');
+
+    // Record the audio recording end event
+    recordAudioEvent('stop');
 }
 
 /**
@@ -865,247 +903,6 @@ function updateRecordingUI(isRecording, isPaused = false) {
 }
 
 /**
- * Start capturing mouse movement data
- */
-function startCaptureMouseData() {
-    // Clear existing mouse data
-    mouseData = [];
-    
-    // Set up the mouse move listener on the canvas
-    if (window.canvas) {
-        // Get canvas element
-        const canvasEl = window.canvas.getElement();
-        
-        logMessage('Starting mouse data capture...', 'INFO');
-        logMessage(`Canvas element found: ${canvasEl ? 'YES' : 'NO'}`, 'DEBUG');
-        logMessage(`Recording state: isRecording=${isRecording}, isPaused=${isPaused}`, 'DEBUG');
-        
-        // Add mouse move listener
-        canvasEl.addEventListener('mousemove', captureMouseMove);
-        
-        // Add mouse down/up listeners to track interactions
-        canvasEl.addEventListener('mousedown', captureMouseDown);
-        canvasEl.addEventListener('mouseup', captureMouseUp);
-        
-        // Add direct event listeners to fabric.js canvas for redundancy
-        if (window.canvas.on) {
-            window.canvas.on('mouse:down', function(options) {
-                logMessage(`Fabric mouse:down event captured at (${Math.round(options.pointer.x)}, ${Math.round(options.pointer.y)})`, 'DEBUG');
-                // We don't need to do anything here - just confirming events are firing
-            });
-            
-            window.canvas.on('mouse:move', function(options) {
-                // Log occasionally to avoid spam
-                if (Math.random() < 0.001) {
-                    logMessage(`Fabric mouse:move event captured at (${Math.round(options.pointer.x)}, ${Math.round(options.pointer.y)})`, 'DEBUG');
-                }
-            });
-            
-            logMessage('Added redundant fabric.js event listeners', 'DEBUG');
-        }
-        
-        // Add global document-level event listener as backup
-        document.addEventListener('mousemove', function(e) {
-            if (!isRecording || isPaused) return;
-            
-            // Only process events over the canvas area
-            const rect = canvasEl.getBoundingClientRect();
-            if (e.clientX >= rect.left && e.clientX <= rect.right && 
-                e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                
-                // Check if button is pressed
-                if (e.buttons === 1) {
-                    // Get elapsed recording time
-                    const elapsedTimeMs = getCurrentRecordingTime();
-                    const now = Date.now();
-                    
-                    // Convert to canvas coordinates
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    
-                    // Check if we're in bounding box mode
-                    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
-                                              window.DrawingTools.isInBoundingBoxMode();
-                    
-                    // Store in mouse data
-                    mouseData.push({
-                        type: 'move',
-                        x: x,
-                        y: y,
-                        timeOffset: elapsedTimeMs,
-                        realTime: now,
-                        isLaserPointer: !isInBoundingBoxMode, // Only mark as laser pointer if NOT in bounding box mode
-                        isBoundingBox: isInBoundingBoxMode,   // Explicitly mark as bounding box if in that mode
-                        source: 'document', // Mark that this came from document listener
-                        buttons: e.buttons
-                    });
-                    
-                    // Call the hook to ensure visual cursor trails match
-                    if (typeof window.updateCursorTrail === 'function') {
-                        window.updateCursorTrail({x: x, y: y});
-                    }
-                    
-                    if (Math.random() < 0.01) {
-                        logMessage(`Captured ${isInBoundingBoxMode ? 'bounding box' : 'laser'} move via document: (${Math.round(x)}, ${Math.round(y)})`, 'DEBUG');
-                        logMessage(`Total mouse data points: ${mouseData.length}`, 'DEBUG');
-                    }
-                }
-            }
-        });
-        
-        // Add document level mouse down/up events
-        document.addEventListener('mousedown', function(e) {
-            if (!isRecording || isPaused) return;
-            
-            // Only process events over the canvas area
-            const rect = canvasEl.getBoundingClientRect();
-            if (e.clientX >= rect.left && e.clientX <= rect.right && 
-                e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                
-                // Only handle left button
-                if (e.button === 0) {
-                    // Get elapsed recording time
-                    const elapsedTimeMs = getCurrentRecordingTime();
-                    const now = Date.now();
-                    
-                    // Convert to canvas coordinates
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    
-                    logMessage(`Document mousedown detected over canvas at (${Math.round(x)}, ${Math.round(y)})`, 'INFO');
-                    
-                    // Check if we're in bounding box mode - we need to consult the DrawingTools module
-                    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
-                                              window.DrawingTools.isInBoundingBoxMode();
-                    
-                    // Store in mouse data
-                    mouseData.push({
-                        type: 'down',
-                        button: e.button,
-                        x: x,
-                        y: y,
-                        timeOffset: elapsedTimeMs,
-                        realTime: now,
-                        isLaserPointer: !isInBoundingBoxMode, // Only mark as laser pointer if NOT in bounding box mode
-                        isBoundingBox: isInBoundingBoxMode,   // Explicitly mark as bounding box if in that mode
-                        source: 'document' // Mark that this came from document listener
-                    });
-                    
-                    logMessage(`Added mousedown event via document listener - total data points: ${mouseData.length}`, 'DEBUG');
-                }
-            }
-        });
-        
-        document.addEventListener('mouseup', function(e) {
-            if (!isRecording || isPaused) return;
-            
-            // Only process events over the canvas area
-            const rect = canvasEl.getBoundingClientRect();
-            if (e.clientX >= rect.left && e.clientX <= rect.right && 
-                e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                
-                // Only handle left button
-                if (e.button === 0) {
-                    // Get elapsed recording time
-                    const elapsedTimeMs = getCurrentRecordingTime();
-                    const now = Date.now();
-                    
-                    // Convert to canvas coordinates
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    
-                    logMessage(`Document mouseup detected over canvas at (${Math.round(x)}, ${Math.round(y)})`, 'INFO');
-                    
-                    // Check if we're in bounding box mode - we need to consult the DrawingTools module
-                    const isInBoundingBoxMode = window.DrawingTools && window.DrawingTools.isInBoundingBoxMode && 
-                                              window.DrawingTools.isInBoundingBoxMode();
-                    
-                    // Store in mouse data
-                    mouseData.push({
-                        type: 'up',
-                        button: e.button,
-                        x: x,
-                        y: y,
-                        timeOffset: elapsedTimeMs,
-                        realTime: now,
-                        isLaserPointer: !isInBoundingBoxMode, // Only mark as laser pointer if NOT in bounding box mode
-                        isBoundingBox: isInBoundingBoxMode,   // Explicitly mark as bounding box if in that mode
-                        source: 'document' // Mark that this came from document listener
-                    });
-                    
-                    logMessage(`Added mouseup event via document listener - total data points: ${mouseData.length}`, 'DEBUG');
-                }
-            }
-        });
-        
-        logMessage('Mouse data capture started', 'INFO');
-        logMessage('Mouse events will be captured and stored in the JSON', 'INFO');
-        logMessage('HOW TO USE LASER POINTER: Click and drag on the image while recording', 'INFO');
-    } else {
-        logMessage('Canvas not available for mouse tracking', 'WARN');
-    }
-}
-
-/**
- * Stop capturing mouse movement data
- */
-function stopCaptureMouseData() {
-    if (window.canvas) {
-        // Get canvas element
-        const canvasEl = window.canvas.getElement();
-        
-        // Remove event listeners
-        canvasEl.removeEventListener('mousemove', captureMouseMove);
-        canvasEl.removeEventListener('mousedown', captureMouseDown);
-        canvasEl.removeEventListener('mouseup', captureMouseUp);
-        
-        // Log details about the captured mouse data
-        logMessage('Mouse data capture stopped', 'DEBUG');
-        
-        // Check if we actually captured any data
-        if (mouseData.length === 0) {
-            logMessage('WARNING: No mouse data was captured during recording!', 'WARN');
-            logMessage('Check the following:', 'WARN');
-            logMessage('1. Did you move your mouse over the canvas while recording?', 'INFO');
-            logMessage('2. Is the cursor trail enabled? (checkbox should be checked)', 'INFO');
-            logMessage('3. Did you press the left mouse button to activate the laser pointer?', 'INFO');
-            logMessage('4. Check browser console for errors in event handling', 'INFO');
-        return;
-    }
-    
-        // Count different types of mouse events
-        const moveCount = mouseData.filter(d => d.type === 'move').length;
-        const downCount = mouseData.filter(d => d.type === 'down').length;
-        const upCount = mouseData.filter(d => d.type === 'up').length;
-        const laserCount = mouseData.filter(d => d.isLaserPointer).length;
-        const directCount = mouseData.filter(d => d.source === 'direct').length;
-        const cursorTrailCount = mouseData.filter(d => d.source === 'cursorTrail').length;
-        
-        logMessage(`Captured ${mouseData.length} mouse data points total:`, 'INFO');
-        logMessage(`- ${moveCount} move events`, 'INFO');
-        logMessage(`- ${downCount} down events`, 'INFO');
-        logMessage(`- ${upCount} up events`, 'INFO');
-        logMessage(`- ${laserCount} laser pointer events`, 'INFO');
-        logMessage(`- ${directCount} direct capture events`, 'INFO');
-        logMessage(`- ${cursorTrailCount} cursor trail events`, 'INFO');
-        
-        // Log a few sample points if available
-        if (mouseData.length > 0) {
-            logMessage('First mouse data point:', 'DEBUG');
-            logMessage(JSON.stringify(mouseData[0], null, 2), 'DEBUG');
-            
-            if (mouseData.length > 1) {
-                logMessage('Last mouse data point:', 'DEBUG');
-                logMessage(JSON.stringify(mouseData[mouseData.length - 1], null, 2), 'DEBUG');
-            }
-        } else {
-            logMessage('WARNING: No mouse data was captured during recording!', 'WARN');
-            logMessage('Check that the mouse event listeners are working properly', 'DEBUG');
-        }
-    }
-}
-
-/**
  * Helper function to determine the currently active drawing tool
  * @returns {Object} Object containing tool information (type and mode)
  */
@@ -1146,282 +943,6 @@ function getActiveDrawingTool(e) {
     }
     
     return toolInfo;
-}
-
-/**
- * Capture mouse move event with timing
- * @param {MouseEvent} e - Mouse event
- */
-function captureMouseMove(e) {
-    if (!isRecording || isPaused) {
-        // If we're not recording or paused, don't process further
-        if (Math.random() < 0.001) {
-            logMessage('Mouse move ignored - not recording or paused', 'DEBUG');
-        }
-        return;
-    }
-    
-    // Log receiving the event occasionally
-    if (Math.random() < 0.001) {
-        logMessage(`Mouse move event received - type: ${e.type}, buttons: ${e.buttons}`, 'DEBUG');
-    }
-    
-    const now = Date.now();
-    
-    // Get active drawing tool
-    const activeTool = getActiveDrawingTool(e);
-    
-    // Throttle mouse move events to avoid excessive data points
-    // Only capture if it's been at least MOUSE_MOVE_CAPTURE_INTERVAL ms since last capture
-    // Exception: always capture if a tool is active (for better quality)
-    if (activeTool.type === 'none' && now - lastMouseMoveCapture < MOUSE_MOVE_CAPTURE_INTERVAL) {
-        return;
-    }
-    
-    // Update last capture time
-    lastMouseMoveCapture = now;
-    
-    // Get canvas and position
-    const canvas = window.canvas;
-    
-    if (!canvas) {
-        logMessage('Canvas not available during mouse move capture', 'WARN');
-        return;
-    }
-    
-    // Get pointer coordinates
-    let pointer;
-    try {
-        // Get from fabric canvas if possible
-        pointer = canvas.getPointer(e);
-    } catch (err) {
-        // Fallback to using client coordinates
-        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
-        pointer = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
-        };
-        logMessage(`Used fallback coordinates: (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
-    }
-    
-    // Get elapsed recording time
-    const elapsedTimeMs = getCurrentRecordingTime();
-    
-    // Log what we're capturing (but not too often to avoid log spam)
-    if (now % 500 < 50) { // Only log approximately every 500ms
-        logMessage(`Capturing ${activeTool.type} move: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
-    }
-    
-    // Create the base data point
-    const dataPoint = {
-        type: 'move',
-        x: pointer.x,
-        y: pointer.y,
-        timeOffset: elapsedTimeMs, // Time in ms from recording start
-        realTime: now,
-        activeTool: activeTool.type,
-        buttons: e.buttons   // Store the button state for debugging
-    };
-    
-    // Add tool-specific properties
-    if (activeTool.type === 'boundingBox') {
-        dataPoint.boundingbox_mode = activeTool.mode;
-        
-        // If DrawingTools provides box coordinates, save them
-        if (window.DrawingTools.getCurrentBoxCoords) {
-            dataPoint.boxCoords = window.DrawingTools.getCurrentBoxCoords();
-        }
-        
-        // For backward compatibility
-        dataPoint.isBoundingBox = true;
-        dataPoint.isLaserPointer = false;
-    } else if (activeTool.type === 'laserPointer') {
-        // For backward compatibility
-        dataPoint.isLaserPointer = true;
-        dataPoint.isBoundingBox = false;
-    }
-    
-    // Store mouse data with timestamp
-    mouseData.push(dataPoint);
-}
-
-/**
- * Capture mouse down event with timing
- * @param {MouseEvent} e - Mouse event
- */
-function captureMouseDown(e) {
-    if (!isRecording || isPaused) {
-        logMessage('Mouse down ignored - not recording or paused', 'DEBUG');
-        return;
-    }
-    
-    // Log event details
-    logMessage(`Mouse down event received - type: ${e.type}, button: ${e.button}`, 'INFO');
-    
-    // Get canvas and position
-    const canvas = window.canvas;
-    
-    if (!canvas) {
-        logMessage('Canvas not available during mouse down capture', 'WARN');
-        return;
-    }
-    
-    // Get pointer coordinates
-    let pointer;
-    try {
-        // Get from fabric canvas if possible
-        pointer = canvas.getPointer(e);
-    } catch (err) {
-        // Fallback to using client coordinates
-        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
-        pointer = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
-        };
-        logMessage(`Used fallback coordinates for mouse down: (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
-    }
-    
-    // Get elapsed recording time
-    const elapsedTimeMs = getCurrentRecordingTime();
-    
-    // Get active drawing tool - mousedown should update the active tool state
-    const activeTool = getActiveDrawingTool(e);
-    
-    // Log what we're capturing
-    logMessage(`Capturing ${activeTool.type} down: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}`, 'INFO');
-    
-    // Create the base data point
-    const dataPoint = {
-        type: 'down',
-        button: e.button,
-        x: pointer.x,
-        y: pointer.y,
-        timeOffset: elapsedTimeMs, // Time in ms from recording start
-        realTime: Date.now(),
-        activeTool: activeTool.type,
-        source: 'normal' // Mark the source
-    };
-    
-    // Add tool-specific properties
-    if (activeTool.type === 'boundingBox') {
-        dataPoint.boundingbox_mode = activeTool.mode;
-        
-        // Save initial box coordinates if available
-        if (window.DrawingTools && window.DrawingTools.getInitialBoxCoords) {
-            dataPoint.boxCoords = window.DrawingTools.getInitialBoxCoords();
-        }
-        
-        // For backward compatibility
-        dataPoint.isBoundingBox = true;
-        dataPoint.isLaserPointer = false;
-    } else if (activeTool.type === 'laserPointer') {
-        // For backward compatibility
-        dataPoint.isLaserPointer = true;
-        dataPoint.isBoundingBox = false;
-    }
-    
-    // Store mouse data with timestamp
-    mouseData.push(dataPoint);
-    
-    logMessage(`Added mouse DOWN event at coordinates (${Math.round(pointer.x)}, ${Math.round(pointer.y)}) to mouse data array`, 'DEBUG');
-    logMessage(`Total mouse data points now: ${mouseData.length}`, 'DEBUG');
-}
-
-/**
- * Capture mouse up event with timing
- * @param {MouseEvent} e - Mouse event
- */
-function captureMouseUp(e) {
-    if (!isRecording || isPaused) return;
-    
-    // Get canvas and position
-    const canvas = window.canvas;
-    
-    if (!canvas) {
-        logMessage('Canvas not available during mouse up capture', 'WARN');
-        return;
-    }
-    
-    // Get pointer coordinates
-    let pointer;
-    try {
-        pointer = canvas.getPointer(e);
-    } catch (err) {
-        // Fallback to using client coordinates
-        const rect = canvas.lowerCanvasEl.getBoundingClientRect();
-        pointer = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
-        };
-        logMessage(`Used fallback coordinates for mouse up: (${Math.round(pointer.x)}, ${Math.round(pointer.y)})`, 'DEBUG');
-    }
-    
-    // Get elapsed recording time
-    const elapsedTimeMs = getCurrentRecordingTime();
-    
-    // Get active drawing tool - note this is tricky as the tool status
-    // may be changing on mouseup, so we need to check what was active before
-    // For this we check the last mouseDown event and preserve that tool type
-    let activeTool = getActiveDrawingTool({...e, buttons: 1}); // Pretend button is still down
-    
-    // Look at previous recorded data point to ensure consistency
-    const previousPoints = mouseData.filter(data => data.type === 'down' || data.type === 'move');
-    if (previousPoints.length > 0) {
-        const previousPoint = previousPoints[previousPoints.length - 1];
-        
-        // If previous point has a tool type, use it for consistency
-        if (previousPoint.activeTool) {
-            activeTool.type = previousPoint.activeTool;
-        } else if (previousPoint.isBoundingBox) {
-            // Legacy support
-            activeTool.type = 'boundingBox';
-        } else if (previousPoint.isLaserPointer) {
-            // Legacy support
-            activeTool.type = 'laserPointer';
-        }
-        
-        // Get the mode from previous point if it exists
-        if (previousPoint.boundingbox_mode) {
-            activeTool.mode = previousPoint.boundingbox_mode;
-        }
-    }
-    
-    // Log what we're capturing
-    logMessage(`Capturing ${activeTool.type} up: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}, button: ${e.button}`, 'DEBUG');
-    
-    // Create the base data point
-    const dataPoint = {
-        type: 'up',
-        button: e.button,
-        x: pointer.x,
-        y: pointer.y,
-        timeOffset: elapsedTimeMs, // Time in ms from recording start
-        realTime: Date.now(),
-        activeTool: activeTool.type
-    };
-    
-    // Add tool-specific properties
-    if (activeTool.type === 'boundingBox') {
-        dataPoint.boundingbox_mode = activeTool.mode;
-        
-        // Get final box coordinates if available
-        if (window.DrawingTools && window.DrawingTools.getCurrentBoxCoords) {
-            dataPoint.boxCoords = window.DrawingTools.getCurrentBoxCoords();
-        }
-        
-        // For backward compatibility
-        dataPoint.isBoundingBox = true;
-        dataPoint.isLaserPointer = false;
-    } else if (activeTool.type === 'laserPointer') {
-        // For backward compatibility
-        dataPoint.isLaserPointer = true;
-        dataPoint.isBoundingBox = false;
-    }
-    
-    // Store mouse data with timestamp
-    mouseData.push(dataPoint);
-    
-    logMessage(`Added mouse UP event at coordinates (${Math.round(pointer.x)}, ${Math.round(pointer.y)}) to mouse data array`, 'DEBUG');
 }
 
 /**
@@ -1521,391 +1042,91 @@ function stopVolumeMeter() {
 }
 
 /**
- * Save annotation data to a file
+ * Save annotation data (audio + events) to a file
  */
-function saveAnnotationData() {
-    try {
-        logMessage('Preparing annotation data for download...', 'INFO');
-        
-        // Log diagnostics about the mouse data being saved
-        logMouseDataDiagnostics(mouseData, 'save');
-        
-        // Add specific verification for bounding box data
-        const boundingBoxEvents = mouseData.filter(data => data.isBoundingBox === true);
-        logMessage(`Found ${boundingBoxEvents.length} bounding box events in recording data`, 'INFO');
-        if (boundingBoxEvents.length > 0) {
-            // Log a sample bounding box event
-            const sampleEvent = boundingBoxEvents[boundingBoxEvents.length - 1]; // Last event to get final state
-            logMessage(`Sample bounding box data: mode=${sampleEvent.boundingbox_mode}, coords=${JSON.stringify(sampleEvent.boxCoords || {})}`, 'INFO');
-        }
-        
-        // Check if we have a canvas with an image
-        if (!window.canvas) {
-            logMessage('No canvas found to save image data', 'WARN');
+async function saveAnnotationData() {
+    if (!audioBlob && Object.values(window.recordedEvents).every(arr => arr.length === 0)) {
+        logMessage('No annotation data to save (no audio or recorded events)', 'WARN');
+        alert('There is no annotation data to save.');
             return;
         }
         
-        // Get current timestamp for filename
-        const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-        const filename = `annotation-data-${timestamp}.json`;
-        const audioFilename = `recording-${timestamp}.mp3`;
-        
-        // Create a comprehensive data object
-        const annotationData = {
-            timestamp: timestamp,
-            image: {
-                dataUrl: null,  // Will be populated with image data
-                width: 0,
-                height: 0
-            },
-            audio: {
-                dataUrl: null,  // Will be populated with audio data
-                duration: 0,
-                filename: audioFilename // Reference to the separate audio file
-            },
-            mouseData: mouseData || [],
-            annotations: []  // Will contain drawing annotations
-        };
-        
-        // 1. Get image data
-        getImageDataFromCanvas()
-            .then(imageData => {
-                annotationData.image = imageData;
-                logMessage('Image data captured', 'DEBUG');
-                return getAudioData();
-            })
-            .then(audioData => {
-                annotationData.audio = audioData;
-                logMessage('Audio data captured', 'DEBUG');
-                return getAnnotationsFromCanvas();
-            })
-            .then(annotations => {
-                annotationData.annotations = annotations;
-                logMessage('Annotation data captured', 'DEBUG');
-                
-                // Create abbreviated version for logging
-                const logVersion = JSON.parse(JSON.stringify(annotationData));
-                
-                // Truncate image data URL
-                if (logVersion.image && logVersion.image.dataUrl) {
-                    const dataUrlPrefix = logVersion.image.dataUrl.substring(0, 50);
-                    logVersion.image.dataUrl = dataUrlPrefix + '... [truncated]';
-                }
-                
-                // Truncate audio data URL
-                if (logVersion.audio && logVersion.audio.dataUrl) {
-                    const audioUrlPrefix = logVersion.audio.dataUrl.substring(0, 50);
-                    logVersion.audio.dataUrl = audioUrlPrefix + '... [truncated]';
-                }
-                
-                // Log the abbreviated JSON
-                logMessage('Annotation data JSON (abbreviated):', 'INFO');
-                logMessage(JSON.stringify(logVersion, null, 2), 'INFO');
-                
-                // Create and download the JSON file
-                const jsonString = JSON.stringify(annotationData, null, 2);
-                const jsonBlob = new Blob([jsonString], { type: 'application/json' });
-                
-                // Download the JSON file
-                downloadFile(jsonBlob, filename);
-                
-                logMessage(`Annotation data saved to ${filename}`, 'INFO');
-                
-                // Now save the audio file separately if it exists
+    // Prepare JSON data with structured events
+    const totalDuration = getCurrentRecordingTime(); // Get final duration
+    const recordingTimestamp = new Date(recordingStartTime).toISOString();
+
+    // Get image info (if available)
+    const imageInfo = {
+        url: document.getElementById('url-image')?.value || null,
+        width: window.canvas?.width || null, // Current canvas width
+        height: window.canvas?.height || null // Current canvas height
+        // TODO: Store original image dimensions if needed for replay scaling
+    };
+
+    // --- Convert audio blob to Base64 ---
+    let audioBlobBase64 = null;
                 if (audioBlob) {
-                    // Save the audio blob as a separate MP3 file
-                    downloadFile(audioBlob, audioFilename);
-                    logMessage(`Audio recording saved to ${audioFilename}`, 'INFO');
-                } else {
-                    logMessage('No audio recording available to save', 'WARN');
-                }
-            })
-            .catch(error => {
-                console.error('Error saving annotation data:', error);
-                logMessage('Error saving annotation data: ' + error.message, 'ERROR');
-            });
+        try {
+            audioBlobBase64 = await blobToBase64(audioBlob);
+            logMessage('Audio blob successfully converted to Base64', 'DEBUG');
     } catch (error) {
-        console.error('Error in saveAnnotationData:', error);
-        logMessage('Error saving data: ' + error.message, 'ERROR');
+            console.error('Error converting audio blob to Base64:', error);
+            logMessage('Error converting audio blob to Base64. Saving without audio.', 'ERROR');
+        }
+    } else {
+        logMessage('No audio blob found to save.', 'INFO');
     }
-}
 
-/**
- * Get image data from the canvas
- * @returns {Promise} Promise that resolves with image data object
- */
-function getImageDataFromCanvas() {
-    return new Promise((resolve, reject) => {
-        try {
-            const canvas = window.canvas;
-            if (!canvas) {
-                return reject(new Error('Canvas not available'));
-            }
-            
-            // Find image object on canvas
-            const objects = canvas.getObjects();
-            const imgObject = objects.find(obj => obj.type === 'image');
-            
-            if (!imgObject) {
-                return reject(new Error('No image found on canvas'));
-            }
-            
-            // Get image dimensions
-            const width = imgObject.width * imgObject.scaleX;
-            const height = imgObject.height * imgObject.scaleY;
-            
-            // Convert canvas to data URL
-            let dataUrl;
-            try {
-                // Try to get data URL directly from canvas
-                dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            } catch (e) {
-                console.warn('Could not get dataURL from main canvas, creating temporary canvas', e);
-                
-                // Create a temporary canvas with just the image
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = width;
-                tempCanvas.height = height;
-                const ctx = tempCanvas.getContext('2d');
-                
-                // Draw image to temp canvas
-                imgObject.clone(function(cloned) {
-                    cloned.set({
-                        left: 0,
-                        top: 0,
-                        scaleX: 1,
-                        scaleY: 1
-                    });
-                    
-                    tempCanvas.width = width;
-                    tempCanvas.height = height;
-                    
-                    cloned.render(ctx);
-                    dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
-                    
-                    resolve({
-                        dataUrl: dataUrl,
-                        width: width,
-                        height: height,
-                        originalWidth: imgObject.width,
-                        originalHeight: imgObject.height
-                    });
-                });
-                return; // Don't resolve here, it will be resolved in the clone callback
-            }
-            
-            // If we got here, we have a dataUrl from the main canvas
-            resolve({
-                dataUrl: dataUrl,
-                width: width,
-                height: height,
-                originalWidth: imgObject.width,
-                originalHeight: imgObject.height
-            });
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
+    // --- Structure the JSON data ---
+    const annotationData = {
+        // Ensure "Events" is the first key for readability
+        Events: window.recordedEvents,
 
-/**
- * Get audio data as base64
- * @returns {Promise} Promise that resolves with audio data object
- */
-function getAudioData() {
-    return new Promise((resolve, reject) => {
-        try {
-            if (!audioBlob) {
-                // No audio recording, return empty audio data
-                return resolve({
-                    dataUrl: null,
-                    duration: 0
-                });
-            }
-            
-            // Convert audio blob to base64 data URL
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const dataUrl = e.target.result;
-                
-                // Calculate audio duration based on recording time
-                const duration = recordingStartTime ? 
-                    (Date.now() - recordingStartTime - pausedTime) / 1000 : 0;
-                
-                resolve({
-                    dataUrl: dataUrl,
-                    duration: duration,
-                    format: 'audio/webm'
-                });
-            };
-            
-            reader.onerror = function() {
-                reject(new Error('Error reading audio data'));
-            };
-            
-            reader.readAsDataURL(audioBlob);
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
+        // Metadata
+        version: "2.0", // New schema version
+        recordingStartTime: recordingTimestamp,
+        totalDuration: totalDuration,
+        imageInfo: imageInfo,
+        audioBlobBase64: audioBlobBase64 // Include Base64 audio string or null
+    };
 
-/**
- * Get annotations from canvas
- * @returns {Promise} Promise that resolves with annotation objects
- */
-function getAnnotationsFromCanvas() {
-    return new Promise((resolve, reject) => {
-        try {
-            const canvas = window.canvas;
-            if (!canvas) {
-                return resolve([]);
-            }
-            
-            // Get all objects from canvas except the main image
-            const objects = canvas.getObjects();
-            
-            // Log objects for debugging
-            logMessage(`Found ${objects.length} total objects on canvas for potential annotation`, 'DEBUG');
-            objects.forEach((obj, idx) => {
-                if (obj.type !== 'image') {
-                    logMessage(`Canvas object #${idx+1}: type=${obj.type}, left=${Math.round(obj.left)}, top=${Math.round(obj.top)}, width=${Math.round(obj.width)}, height=${Math.round(obj.height)}`, 'DEBUG');
-                }
-            });
-            
-            const annotations = objects
-                .filter(obj => obj.type !== 'image' && !obj.isCursorTrail)
-                .map(obj => {
-                    // Basic properties all objects have
-                    const annotation = {
-                        type: obj.type,
-                        left: obj.left,
-                        top: obj.top,
-                        width: obj.width,
-                        height: obj.height,
-                        angle: obj.angle,
-                        timestamp: obj.timestamp || Date.now(), // When this annotation was created
-                        properties: {
-                            fill: obj.fill,
-                            stroke: obj.stroke,
-                            strokeWidth: obj.strokeWidth
-                        }
-                    };
-                    
-                    // Additional properties for specific types
-                    if (obj.type === 'path') {
-                        annotation.path = obj.path;
-                    } else if (obj.type === 'text') {
-                        annotation.text = obj.text;
-                        annotation.fontSize = obj.fontSize;
-                        annotation.fontFamily = obj.fontFamily;
-                    } else if (obj.type === 'rect') {
-                        logMessage(`Capturing bounding box for save: ${Math.round(obj.width)}x${Math.round(obj.height)}`, 'INFO');
-                    }
-                    
-                    return annotation;
-                });
-            
-            // Include laser pointer data from mouse movements
-            // Filter mouse data for times when laser pointer was active
-            const laserPointerData = mouseData.filter(data => 
-                // Check for laser pointer activation by time and mouse down state
-                data.isLaserPointer || // If it's explicitly marked
-                (data.type === 'down' || 
-                (data.button === 0 && data.type === 'move' && window.showCursorTail))
-            );
-            
-            if (laserPointerData.length > 0) {
-                // Group laser pointer points into sessions (each mouse down to mouse up)
-                let currentSession = [];
-                let sessions = [];
-                
-                laserPointerData.forEach(point => {
-                    if (point.type === 'down') {
-                        // Start a new session
-                        if (currentSession.length > 0) {
-                            sessions.push(currentSession);
-                        }
-                        currentSession = [point];
-                    } else if (point.type === 'up') {
-                        // End the current session
-                        currentSession.push(point);
-                        sessions.push(currentSession);
-                        currentSession = [];
-                } else {
-                        // Add to current session
-                        currentSession.push(point);
-                    }
-                });
-                
-                // Add the last session if it exists
-                if (currentSession.length > 0) {
-                    sessions.push(currentSession);
-                }
-                
-                // Convert sessions to annotation objects
-                sessions.forEach((session, index) => {
-                    if (session.length < 2) return; // Skip sessions with just one point
-                    
-                    const startTime = session[0].timeOffset;
-                    const endTime = session[session.length - 1].timeOffset;
-                    
-                    // Create an annotation for this laser pointer session
-                    const laserAnnotation = {
-                        type: 'laserPointer',
-                        sessionId: index,
-                        startTime: startTime,
-                        endTime: endTime,
-                        duration: endTime - startTime,
-                        points: session.map(point => ({
-                            x: point.x,
-                            y: point.y,
-                            timeOffset: point.timeOffset,
-                            type: point.type || 'move'
-                        })),
-                        timestamp: session[0].realTime || Date.now()
-                    };
-                    
-                    annotations.push(laserAnnotation);
-                });
-                
-                logMessage(`Added ${sessions.length} laser pointer sessions to annotations`, 'DEBUG');
-            }
-            
-            resolve(annotations);
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
+    // Stringify the data with pretty printing
+    const jsonData = JSON.stringify(annotationData, null, 2);
 
-/**
- * Download a file using the FileSaver.js library
- * @param {Blob} blob - The data to download
- * @param {string} filename - The name of the file to download
- */
-function downloadFile(blob, filename) {
+    // Create a blob from the JSON data
+    const jsonBlob = new Blob([jsonData], { type: 'application/json' });
+
+    // Generate filename
+    const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `annotation_${dateStr}.json`;
+
+    // Use FileSaver.js to trigger download
     try {
-        // Check if FileSaver.js is available
-        if (typeof saveAs === 'function') {
-            saveAs(blob, filename);
-            logMessage(`File "${filename}" downloaded`, 'INFO');
-        } else {
-            // Fallback if FileSaver.js is not available
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            logMessage(`File "${filename}" downloaded (fallback method)`, 'INFO');
+        saveAs(jsonBlob, filename);
+        logMessage(`Annotation data saved as ${filename}`, 'INFO');
+        } catch (error) {
+        console.error('Error using FileSaver:', error);
+        logMessage(`Error saving file: ${error.message}`, 'ERROR');
+        alert('Failed to save the annotation file. See console for details.');
         }
-    } catch (error) {
-        console.error('Error downloading file:', error);
-        logMessage('Error downloading file: ' + error.message, 'ERROR');
-    }
+}
+
+/**
+ * Helper function to convert Blob to Base64
+ * @param {Blob} blob - The blob to convert
+ * @returns {Promise<string>} Promise resolving with Base64 string
+ */
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+        reader.onloadend = () => {
+            // Remove the data URL prefix (e.g., "data:audio/webm;base64,")
+            const base64String = reader.result.split(',')[1];
+            resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
 }
 
 /**
@@ -1916,242 +1137,241 @@ function downloadFile(blob, filename) {
 function loadAnnotationData(event) {
     const file = event.target.files[0];
     if (!file) return;
+    logMessage(`Loading file: ${file.name}`, 'INFO');
     
     try {
-        // Read the file
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
                 const fileContent = e.target.result;
-                
-                // Check file extension to determine processing method
                 const fileExt = file.name.split('.').pop().toLowerCase();
                 
                 if (fileExt === 'json') {
-                    // Direct JSON file processing
-                    processJsonAnnotationData(fileContent);
+                    logMessage('Processing JSON file...', 'DEBUG');
+                    processJsonAnnotationData(fileContent); // Calls V2 processor
                 } else if (fileExt === 'txt') {
-                    // Email text file processing
-                    processEmailAnnotationData(fileContent);
+                    logMessage('Processing TXT (email format) file...', 'DEBUG');
+                    processEmailAnnotationData(fileContent); // Needs update for V2
                 } else {
                     logMessage(`Unsupported file type: ${fileExt}. Please use .json or .txt files.`, 'ERROR');
+                    alert('Unsupported file type. Please select a .json or .txt file.');
                 }
             } catch (parseError) {
-                console.error('Error parsing file:', parseError);
-                logMessage('Error parsing file: ' + parseError.message, 'ERROR');
+                console.error('Error parsing file content:', parseError);
+                logMessage('Error parsing file content: ' + parseError.message, 'ERROR');
+                alert('Failed to parse the annotation file. Check console for details.');
             }
+             // Reset file input to allow loading the same file again
+             event.target.value = null;
         };
         
         reader.onerror = function() {
             logMessage('Error reading file', 'ERROR');
+            alert('Error reading the selected file.');
         };
         
         reader.readAsText(file);
             } catch (error) {
         console.error('Error loading annotation data:', error);
         logMessage('Error loading annotation data: ' + error.message, 'ERROR');
+        alert('An error occurred while loading the file.');
     }
 }
 
 /**
- * Process JSON annotation data loaded directly from a JSON file
+ * Process JSON annotation data loaded directly from a JSON file (V2 Format)
  * @param {string} jsonContent - The JSON file content as string
  */
-function processJsonAnnotationData(jsonContent) {
+async function processJsonAnnotationData(jsonContent) {
+    logMessage('Processing V2 JSON data...', 'DEBUG');
     try {
         const data = JSON.parse(jsonContent);
         
-        // Store the mouse data
-        mouseData = data.mouseData || [];
-        
-        // Verify bounding box data is properly loaded
-        const boundingBoxEvents = mouseData.filter(data => data.isBoundingBox === true);
-        logMessage(`Loaded ${boundingBoxEvents.length} bounding box events from JSON file`, 'INFO');
-        if (boundingBoxEvents.length > 0) {
-            // Log a sample bounding box event
-            const sampleEvent = boundingBoxEvents[boundingBoxEvents.length - 1]; // Last event to get final state
-            logMessage(`Sample bounding box data: mode=${sampleEvent.boundingbox_mode}, coords=${JSON.stringify(sampleEvent.boxCoords || {})}`, 'INFO');
+        // --- Data Validation --- //
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid JSON structure: Root is not an object.');
         }
-        
-        // If there's audio data, try to convert it back
-        if (data.audio && data.audio.dataUrl) {
+        // Allow loading older versions for now, but log a warning
+        if (data.version !== "2.0") {
+            logMessage(`Warning: Loaded data version is ${data.version || 'unknown'}, expected 2.0. Replay might be incomplete or inaccurate.`, 'WARN');
+        }
+        if (!data.Events || typeof data.Events !== 'object') {
+             // Attempt to handle potential V1 format
+             if (data.mouseData && Array.isArray(data.mouseData)) {
+                 logMessage('Detected V1 data format (mouseData). Attempting limited load.', 'WARN');
+                 // Create a minimal V2 structure
+                 window.recordedEvents = { initial_state: [], audio_recording: [], laser_pointer: data.mouseData, bounding_box: [] };
+                 // Try to extract image/audio from V1 structure if possible
+                 window.loadedAnnotationData = { Events: window.recordedEvents, imageInfo: data.image, audioBlobBase64: data.audio?.dataUrl?.split(',')[1], version: '1.0' };
+             } else {
+                 throw new Error('Invalid JSON structure: Missing or invalid "Events" object (and not V1 format).');
+             }
+        } else {
+            // Store V2 data directly
+            window.recordedEvents = data.Events || {};
+            window.loadedAnnotationData = data; // Store the full data for metadata access
+        }
+
+        logMessage(`Processing annotation data V${data.version || '1.0'}...`, 'INFO');
+        audioBlob = null; // Reset audio blob
+
+        // --- Load Audio (from V2 format) --- //
+        if (data.audioBlobBase64) {
+            logMessage('Found Base64 audio data, attempting to decode...', 'DEBUG');
             try {
-                // Convert data URL back to Blob
-                const audioDataUrl = data.audio.dataUrl;
+                const byteString = atob(data.audioBlobBase64);
+                const arrayBuffer = new ArrayBuffer(byteString.length);
+                const intArray = new Uint8Array(arrayBuffer);
+                for (let i = 0; i < byteString.length; i++) {
+                    intArray[i] = byteString.charCodeAt(i);
+                }
+                audioBlob = new Blob([arrayBuffer], { type: 'audio/webm' }); // Assume webm
+                logMessage(`Audio data successfully loaded (${(audioBlob.size / 1024).toFixed(1)} KB)`, 'INFO');
+            } catch (audioError) {
+                console.error('Error decoding/loading Base64 audio:', audioError);
+                logMessage('Error loading audio data: ' + audioError.message, 'WARN');
+                audioBlob = null;
+            }
+        } else if (window.loadedAnnotationData?.audio?.dataUrl) { // Check V1 audio dataUrl
+            logMessage('Found V1 audio dataUrl, attempting to decode...', 'DEBUG');
+             try {
+                const audioDataUrl = window.loadedAnnotationData.audio.dataUrl;
                 const byteString = atob(audioDataUrl.split(',')[1]);
                 const mimeString = audioDataUrl.split(',')[0].split(':')[1].split(';')[0];
                 const arrayBuffer = new ArrayBuffer(byteString.length);
                 const intArray = new Uint8Array(arrayBuffer);
-                
-                for (let i = 0; i < byteString.length; i++) {
-                    intArray[i] = byteString.charCodeAt(i);
-                }
-                
+                for (let i = 0; i < byteString.length; i++) { intArray[i] = byteString.charCodeAt(i); }
                 audioBlob = new Blob([arrayBuffer], { type: mimeString });
-                logMessage('Audio data loaded successfully', 'INFO');
+                logMessage(`V1 Audio data successfully loaded (${(audioBlob.size / 1024).toFixed(1)} KB)`, 'INFO');
             } catch (audioError) {
-                console.error('Error loading audio data:', audioError);
-                logMessage('Error loading audio data: ' + audioError.message, 'WARN');
-                // Continue without audio
+                 console.error('Error decoding/loading V1 audio dataUrl:', audioError);
+                logMessage('Error loading V1 audio data: ' + audioError.message, 'WARN');
                 audioBlob = null;
             }
+        } else {
+             logMessage('No audio data found in the file.', 'INFO');
         }
-        
-        logMessage(`Annotation data loaded from JSON file (${mouseData.length} data points)`, 'INFO');
-        
-        // Store image data for replay
-        window.loadedAnnotationData = data;
-        
-        // Update UI to reflect loaded data
-        updateUIAfterDataLoad(data);
+
+        // --- Log Summary --- //
+        // Use loaded events, not just audio category
+        const eventCount = Object.values(window.recordedEvents).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+        logMessage(`Annotation data loaded: ${eventCount} events. Audio found: ${!!audioBlob}`, 'INFO');
+
+        // --- Update UI --- //
+        updateUIAfterDataLoad(window.loadedAnnotationData); // Pass the potentially adapted V1 data
+
     } catch (error) {
-        console.error('Error processing JSON data:', error);
-        logMessage('Error processing JSON data: ' + error.message, 'ERROR');
+        console.error('Error processing annotation JSON:', error);
+        logMessage('Error processing annotation JSON: ' + error.message, 'ERROR');
+        alert('Failed to process the annotation JSON file. It might be corrupted or in an unsupported format. Check console for details.');
+        window.recordedEvents = {};
+        audioBlob = null;
+        window.loadedAnnotationData = null;
+        resetReplayButton();
     }
 }
 
 /**
  * Process annotation data embedded in an email text file
+ * NOTE: Assumes email contains V1 format data. Needs update or separate handling for V2.
  * @param {string} emailContent - The email file content as string
  */
 function processEmailAnnotationData(emailContent) {
+     // TODO: Update this function if emails are expected to contain V2 JSON.
+     logMessage('Processing email file - ASSUMING V1 FORMAT. V2 format in email TBD.', 'WARN');
     try {
-        logMessage('Processing email file for embedded annotation data...', 'INFO');
-        
-        // Look for the annotation markers
+         // Basic marker finding (assuming V1 markers for now)
         const startMarker = 'Annotations start here --->';
         const endMarker = '<--- Annotations end here';
-        
         let startIndex = emailContent.indexOf(startMarker);
-        if (startIndex === -1) {
-            // Try alternative start marker formats
-            const alternativeStartMarkers = [
-                'Annotations start here ->',
-                'Annotations start here:',
-                'Annotations start here'
-            ];
-            
-            for (const marker of alternativeStartMarkers) {
-                startIndex = emailContent.indexOf(marker);
-                if (startIndex !== -1) {
-                    startIndex += marker.length;
-                    break;
-                }
-            }
-            
-            if (startIndex === -1) {
-                throw new Error('Could not find annotation start marker in the email file');
-            }
-        } else {
+        if (startIndex === -1) throw new Error('Could not find annotation start marker.');
             startIndex += startMarker.length;
-        }
-        
         let endIndex = emailContent.indexOf(endMarker, startIndex);
-        if (endIndex === -1) {
-            // If no end marker, assume the rest of the file is annotations
-            endIndex = emailContent.length;
-            logMessage('No end marker found, processing to end of file', 'WARN');
-        }
-        
-        // Extract the base64 encoded data
+        if (endIndex === -1) endIndex = emailContent.length;
+
         const base64Data = emailContent.substring(startIndex, endIndex).trim();
-        
-        if (!base64Data) {
-            throw new Error('No annotation data found between markers');
+        if (!base64Data) throw new Error('No annotation data found between markers');
+
+        // Decode the base64 data (Assuming window.decodeAnnotationData decodes V1)
+        if (typeof window.decodeAnnotationData !== 'function') {
+            throw new Error('decodeAnnotationData function not found.');
         }
-        
-        logMessage(`Found ${base64Data.length} characters of base64 data in email file`, 'INFO');
-        
-        // Decode the base64 data
-        const decodedData = window.decodeAnnotationData(base64Data);
-        
-        // Store the mouse data
-        mouseData = decodedData.mouseData || [];
-        
-        // If there's audio data, try to convert it back
-        if (decodedData.audio && decodedData.audio.dataUrl) {
-            try {
-                // Convert data URL back to Blob
-                const audioDataUrl = decodedData.audio.dataUrl;
-                const byteString = atob(audioDataUrl.split(',')[1]);
-                const mimeString = audioDataUrl.split(',')[0].split(':')[1].split(';')[0];
-                const arrayBuffer = new ArrayBuffer(byteString.length);
-                const intArray = new Uint8Array(arrayBuffer);
-                
-                for (let i = 0; i < byteString.length; i++) {
-                    intArray[i] = byteString.charCodeAt(i);
-                }
-                
-                audioBlob = new Blob([arrayBuffer], { type: mimeString });
-                logMessage('Audio data loaded successfully from email file', 'INFO');
-            } catch (audioError) {
-                console.error('Error loading audio data from email:', audioError);
-                logMessage('Error loading audio data from email: ' + audioError.message, 'WARN');
-                // Continue without audio
-                audioBlob = null;
-            }
-        }
-        
-        logMessage(`Annotation data loaded from email file (${mouseData.length} data points)`, 'INFO');
-        
-        // Store image data for replay
-        window.loadedAnnotationData = decodedData;
-        
-        // Update UI to reflect loaded data
-        updateUIAfterDataLoad(decodedData);
+        const decodedV1Data = window.decodeAnnotationData(base64Data); // This should return V1 structure
+
+        // Attempt to process the decoded V1 data using the JSON processor
+         processJsonAnnotationData(JSON.stringify(decodedV1Data));
+
     } catch (error) {
         console.error('Error processing email data:', error);
         logMessage('Error processing email data: ' + error.message, 'ERROR');
+         alert('Failed to process annotation data from email. It might be corrupted or in an old format.');
+         window.recordedEvents = {};
+        audioBlob = null;
+        window.loadedAnnotationData = null;
+        resetReplayButton();
     }
 }
 
 /**
- * Update UI elements after loading annotation data
- * @param {Object} data - The loaded annotation data
+ * Update UI elements after loading annotation data (Handles V1/V2)
+ * @param {Object} data - The loaded annotation data (full V1 or V2 object)
  */
 function updateUIAfterDataLoad(data) {
-    // Load the image if available
-    if (data.image && data.image.dataUrl) {
+    logMessage('Updating UI after data load...', 'DEBUG');
+    // Load the image if available (check both V1 and V2 locations)
+    const imageUrl = data?.imageInfo?.url || data?.image?.dataUrl;
+    if (imageUrl) {
+        // If it's a data URL from V1, use loadImageFromDataUrl
+        if (data?.image?.dataUrl) {
         loadImageFromDataUrl(data.image.dataUrl);
+            logMessage('Loaded image from V1 dataUrl', 'DEBUG');
+        } else {
+            loadImageFromUrl(imageUrl); // Assumes V2 URL
+            logMessage('Loaded image from V2 imageInfo url', 'DEBUG');
+        }
+        // Update URL input field if applicable
+        const urlInput = document.getElementById('url-image');
+        if (urlInput && data?.imageInfo?.url) urlInput.value = data.imageInfo.url;
+    } else {
+        logMessage('No image URL found in loaded data.', 'WARN');
     }
-    
-    // Update the total recording time if available
-    if (data.audio && data.audio.duration) {
-        const totalSeconds = Math.floor(data.audio.duration / 1000);
+
+    // Update the total recording time display (check both V1 and V2 locations)
+    const totalDurationMs = data?.totalDuration ?? (data?.audio?.duration ? data.audio.duration * 1000 : undefined);
+    if (totalDurationMs !== undefined) {
+        const totalSeconds = Math.floor(totalDurationMs / 1000);
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;
         const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        
         const totalRecordingTime = document.getElementById('total-recording-time');
         if (totalRecordingTime) {
             totalRecordingTime.textContent = formattedTime;
         }
+        logMessage(`Set total duration display to ${formattedTime}`, 'DEBUG');
+    } else {
+         logMessage('Total duration not found in loaded data.', 'WARN');
     }
     
-    // Enable replay button if we have data
+    // Enable replay button if we have events or audio
+    const hasEvents = Object.values(window.recordedEvents || {}).some(arr => Array.isArray(arr) && arr.length > 0);
     const replayBtn = document.getElementById('replay-btn');
-    if (replayBtn && (mouseData.length > 0 || audioBlob)) {
-        replayBtn.disabled = false;
+    if (replayBtn) {
+         replayBtn.disabled = !(hasEvents || audioBlob);
+         if (!replayBtn.disabled) {
+            logMessage('Replay button enabled.', 'DEBUG');
+         } else {
+             logMessage('Replay button remains disabled (no events or audio).', 'DEBUG');
+         }
     }
     
     // Show success notification
+    const eventCount = Object.values(window.recordedEvents || {}).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
     const notification = document.createElement('div');
-    notification.className = 'alert alert-success p-2';
-    notification.innerHTML = `<strong>Success!</strong> Annotation data loaded with ${mouseData.length} data points.`;
-    notification.style.position = 'fixed';
-    notification.style.top = '10%';
-    notification.style.left = '50%';
-    notification.style.transform = 'translateX(-50%)';
-    notification.style.zIndex = '9999';
-    notification.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    notification.className = 'alert alert-success p-2 m-3 position-fixed top-0 start-50 translate-middle-x'; // Centered top
+    notification.style.zIndex = '1060'; // Ensure it's above most elements
+    notification.innerHTML = `<strong>Success!</strong> Annotation data (V${data.version || '1.0'}) loaded (${eventCount} events${audioBlob ? ', audio included' : ''}).`;
     document.body.appendChild(notification);
-    
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-    }, 3000);
+    setTimeout(() => { if (notification.parentNode) notification.parentNode.removeChild(notification); }, 4000); // Slightly longer visibility
 }
 
 /**
@@ -2241,385 +1461,434 @@ function loadImageFromDataUrl(dataUrl) {
 }
 
 /**
- * Play back the recorded annotation data
+ * Play back the recorded annotation data - REFAC TORED FOR V2 EVENTS
  */
-function replayAnnotation() {
-    if (!audioBlob && mouseData.length === 0) {
-        logMessage('No recording or annotation data to replay', 'WARN');
+async function replayAnnotation() {
+    logMessage('Replay V2: Initializing...', 'INFO');
+
+    // --- Data Validation --- //
+    const recordedEvents = window.recordedEvents || {};
+    const allEventCategories = Object.values(recordedEvents);
+    const hasEvents = allEventCategories.some(arr => Array.isArray(arr) && arr.length > 0);
+
+    if (!audioBlob && !hasEvents) {
+        logMessage('Replay V2: No recording or annotation data to replay', 'WARN');
+        alert('No data available to replay.');
         return;
     }
     
     try {
-        // Log detailed diagnostics about mouse data before replay
-        logMouseDataDiagnostics(mouseData, 'replay');
-        
-        logMessage('Starting replay of annotation data', 'INFO');
-        
-        // Make sure we're displaying the correct image
-        if (window.loadedAnnotationData && window.loadedAnnotationData.image && window.loadedAnnotationData.image.dataUrl) {
-            // Check if the image is already loaded on the canvas or needs to be reloaded
-            const canvasObjects = window.canvas.getObjects();
-            const hasImage = canvasObjects.some(obj => obj.type === 'image');
-            
-            if (!hasImage) {
-                logMessage('Loading image for replay...', 'INFO');
-                loadImageFromDataUrl(window.loadedAnnotationData.image.dataUrl);
-                
-                // Give a small delay to ensure image is loaded before starting replay
-                setTimeout(() => {
-                    continueReplay();
-                }, 500);
-                return;
+        // --- Prepare Replay Environment --- //
+        logMessage('Replay V2: Preparing environment...', 'DEBUG');
+
+        // 1. Ensure Correct Image is Loaded & Apply Initial State
+        const initial_state = recordedEvents.initial_state?.[0];
+        if (initial_state?.image_url) {
+            logMessage(`Replay V2: Loading recorded image: ${initial_state.image_url}`, 'INFO');
+            // TODO: Properly wait for image load before continuing
+            loadImageFromUrl(initial_state.image_url); 
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Temporary delay
+            logMessage('Replay V2: Image loaded.', 'INFO');
+
+            logMessage('Replay V2: Applying initial state...', 'DEBUG');
+            // Apply brightness, contrast, cursor size from initial_state
+            const brightnessSlider = document.getElementById('brightness');
+            const contrastSlider = document.getElementById('contrast');
+            const cursorSizeSlider = document.getElementById('cursor-size');
+            if(brightnessSlider) brightnessSlider.value = initial_state.brightness ?? 0;
+            if(contrastSlider) contrastSlider.value = initial_state.contrast ?? 0;
+            if(window.updateImageFilters) window.updateImageFilters();
+            if(cursorSizeSlider && initial_state.cursor_size !== undefined) {
+                cursorSizeSlider.value = initial_state.cursor_size;
+                if(window.updateCursorSize) window.updateCursorSize();
+            }
+             logMessage('Replay V2: Initial state applied.', 'DEBUG');
+        } else {
+            logMessage('Replay V2: No initial state event found or no image URL.', 'WARN');
+        }
+
+        // 2. Prepare Sorted Event List
+        let allEvents = [];
+        for (const category in recordedEvents) {
+            if (Array.isArray(recordedEvents[category])) {
+                recordedEvents[category].forEach(event => {
+                    if (event && (event.time_offset !== undefined || event.start_time_offset !== undefined)) {
+                        event.category = category; // Add category info
+                        event.replay_time = event.start_time_offset ?? event.time_offset;
+                        allEvents.push(event);
+                    } else {
+                         logMessage(`Replay V2: Skipping invalid event in category ${category}: ${JSON.stringify(event)}`, 'WARN');
+                    }
+                });
             }
         }
-        
-        // If no image needed or image already loaded, continue with replay
-        continueReplay();
-        
-    } catch (error) {
-        console.error('Error replaying annotation:', error);
-        logMessage('Error replaying: ' + error.message, 'ERROR');
-        
-        // Make sure the button is reset even if an error occurs
+        allEvents.sort((a, b) => a.replay_time - b.replay_time);
+
+        if (allEvents.length === 0 && !audioBlob) {
+             logMessage('Replay V2: No valid events found to replay.', 'WARN');
         resetReplayButton();
-    }
-    
-    /**
-     * Continue with replay after image is loaded
-     */
-    function continueReplay() {
-        // Create a replay cursor if it doesn't exist - use DrawingTools
-        window.DrawingTools.createReplayCursor();
-        
-        // Debug bounding box replay if the debugging function exists
-        if (window.DrawingTools.debugBoundingBoxReplay) {
-            logMessage('Running bounding box replay diagnostic...', 'INFO');
-            window.DrawingTools.debugBoundingBoxReplay();
+             return;
         }
-        
-        // Variables to track replay state
+        logMessage(`Replay V2: Prepared ${allEvents.length} events for replay.`, 'INFO');
+
+        // 3. Setup Replay UI / Cursor
+        // console.log('DEBUG: Checking window.DrawingTools right before createReplayCursor call:', window.DrawingTools); // <<< ADDED LOG
+        console.log('DEBUG: Keys on window.DrawingTools before createReplayCursor:', Object.keys(window.DrawingTools || {})); // <<< MODIFIED LOG
+        const replayCursor = window.DrawingTools.createReplayCursor();
+        if (!replayCursor) {
+            logMessage('Replay V2: Failed to create replay cursor, aborting.', 'ERROR');
+            resetReplayButton();
+            return;
+        }
+        window.DrawingTools.clearLaserTrail();
+        window.DrawingTools.removeReplayBoundingBox();
+        showReplayControls(); // Show Pause/Stop buttons
+
+        // --- Replay Loop Setup --- //
         let isReplaying = true;
         let isPaused = false;
-        let replayStartTime = Date.now();
+        let replayStartTime = 0; // Will be set precisely when audio starts or loop begins
         let pauseStartTime = 0;
         let totalPausedTime = 0;
         let audioElement = null;
         let animationFrameId = null;
-        let audioStartedPlaying = false;
-        
-        // Show the inline pause and stop buttons
-        showReplayControls();
-        
-        // Log the current cursor size being used for replay
-        logMessage(`Replay starting with cursor size: ${window.cursorSize || 20}px`, 'INFO');
-        
-        // Sort mouse data by timeOffset for reliable playback
-        const sortedMouseData = [...mouseData].sort((a, b) => a.timeOffset - b.timeOffset);
-        
-        if (sortedMouseData.length > 0) {
-            // Analyze the tools used in the recording for diagnostics
-            const toolCount = {
-                laserPointer: sortedMouseData.filter(d => d.activeTool === 'laserPointer' || 
-                                               (d.activeTool === undefined && d.isLaserPointer)).length,
-                boundingBox: sortedMouseData.filter(d => d.activeTool === 'boundingBox' || 
-                                            (d.activeTool === undefined && d.isBoundingBox)).length,
-                none: sortedMouseData.filter(d => d.activeTool === 'none' || 
-                                    (d.activeTool === undefined && !d.isLaserPointer && !d.isBoundingBox)).length
-            };
-            
-            logMessage(`Replay has ${sortedMouseData.length} total mouse data points:`, 'INFO');
-            logMessage(`- Laser pointer events: ${toolCount.laserPointer}`, 'INFO');
-            logMessage(`- Bounding box events: ${toolCount.boundingBox}`, 'INFO');
-            logMessage(`- Other events: ${toolCount.none}`, 'INFO');
-            
-            // Additional logging for bounding box events to help diagnose issues
-            if (toolCount.boundingBox > 0) {
-                const boundingBoxSample = sortedMouseData.find(d => d.activeTool === 'boundingBox' || d.isBoundingBox);
-                if (boundingBoxSample) {
-                    logMessage('Sample bounding box event:', 'INFO');
-                    logMessage(JSON.stringify({
-                        type: boundingBoxSample.type,
-                        activeTool: boundingBoxSample.activeTool,
-                        isBoundingBox: boundingBoxSample.isBoundingBox,
-                        hasCoords: !!boundingBoxSample.boxCoords,
-                        mode: boundingBoxSample.boundingbox_mode
-                    }), 'INFO');
-                }
-            }
-        }
+        let currentEventIndex = 0;
+        let lastCursorPos = { x: initial_state?.image_width / 2 || 0, y: initial_state?.image_height / 2 || 0 }; // Initial cursor position
 
-        // IMPORTANT: Only clear non-bounding box annotations before replay
-        // Don't remove all annotations as we might want to see some boxes during replay
-        if (window.canvas) {
-            logMessage('Selectively clearing annotations before replay...', 'INFO');
-            
-            // Get all objects except the main image and bounding boxes
-            const objects = window.canvas.getObjects();
-            const objectsToRemove = objects.filter(obj => 
-                obj.type !== 'image' && 
-                // Keep any rectangles that might be bounding boxes
-                !(obj.type === 'rect' && obj.stroke === 'blue' && obj.fill && obj.fill.includes('rgba(0, 0, 255'))
-            );
-            
-            // Remove only non-bounding box objects
-            objectsToRemove.forEach(obj => {
-                window.canvas.remove(obj);
-            });
-            
-            window.canvas.renderAll();
-            logMessage(`Cleared ${objectsToRemove.length} non-bounding box objects before replay`, 'DEBUG');
-        }
-        
-        // Render the static annotations (bounding boxes) if they exist in the loaded data
-        if (window.loadedAnnotationData && window.loadedAnnotationData.annotations) {
-            logMessage(`Found ${window.loadedAnnotationData.annotations.length} total annotations to process`, 'DEBUG');
-            
-            // Log details about all annotations for debugging
-            window.loadedAnnotationData.annotations.forEach((ann, idx) => {
-                logMessage(`Annotation #${idx+1}: type=${ann.type}, left=${ann.left}, top=${ann.top}, width=${ann.width}, height=${ann.height}`, 'DEBUG');
-            });
-            
-            const boundingBoxes = window.loadedAnnotationData.annotations.filter(ann => ann.type === 'rect');
-            if (boundingBoxes.length > 0) {
-                logMessage(`Found ${boundingBoxes.length} bounding box annotations to display during replay`, 'INFO');
-                addBoundingBoxesToCanvas(boundingBoxes);
-            } else {
-                logMessage('No bounding box annotations found in the saved data', 'WARN');
-            }
-        } else {
-            logMessage('No annotations data available for replay', 'WARN');
-        }
-        
-        // If we have audio, play it
-        if (audioBlob) {
-            const audioURL = URL.createObjectURL(audioBlob);
-            audioElement = new Audio(audioURL);
-            
-            // Add a timeupdate event to more precisely sync annotations with audio
-            audioElement.addEventListener('timeupdate', function() {
-                // If this is the first timeupdate event, sync the start time
-                if (!audioStartedPlaying) {
-                    audioStartedPlaying = true;
-                    // Reset replay start time when audio actually starts playing
-                    replayStartTime = Date.now() - (audioElement.currentTime * 1000);
-                    logMessage(`Audio playback started, elapsed: ${audioElement.currentTime.toFixed(2)}s`, 'DEBUG');
-                }
-            });
-            
-            // Set up event listeners
-            audioElement.onplay = function() {
-                logMessage('Audio playback initiated', 'DEBUG');
-            };
-            
-            audioElement.onended = function() {
-                logMessage('Audio playback ended', 'INFO');
-                isReplaying = false;
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                }
-                window.DrawingTools.hideReplayCursor(true); // Specify full cleanup (true)
-                URL.revokeObjectURL(audioURL);
-                
-                // Ensure replay button is reset
-                resetReplayButton();
-            };
-            
-            // Play the audio
-            logMessage('Starting audio playback...', 'DEBUG');
-            audioElement.play().catch(error => {
-                logMessage('Error playing audio: ' + error.message, 'ERROR');
-                // Continue with cursor replay even if audio fails
-                logMessage('Continuing with visual replay only', 'WARN');
-            });
-        }
-        
-        // Function to pause the replay
-        window.pauseReplay = function() {
+        // State for tracking active multi-frame events within replayLoop
+        let activeLaserEventDetails = null;
+        let currentLaserPointIndex = 0;
+        let activeLaserPoints = null;
+        let activeBBoxEventDetails = null;
+        let currentBBoxPointIndex = 0;
+        let activeBBoxPoints = null;
+        let cursorNeedsUpdate = true; // Start true to set initial position
+
+         // Handlers for replay controls (Pause/Resume/Stop)
+        window.pauseReplay = () => {
             if (!isPaused && isReplaying) {
                 isPaused = true;
                 pauseStartTime = Date.now();
-                
-                // Pause audio if it exists
-                if (audioElement) {
-                    audioElement.pause();
-                }
-                
-                // Pause animation by cancelling the frame
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                    animationFrameId = null;
-                }
-                
-                logMessage('Replay paused', 'INFO');
-                
-                // Update pause button
+                if (audioElement) audioElement.pause();
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                logMessage('Replay V2: Paused', 'INFO');
+                 // Update button UI
                 const pauseBtn = document.getElementById('replay-pause-btn');
-                if (pauseBtn) {
-                    pauseBtn.textContent = 'Resume';
-                    pauseBtn.classList.remove('btn-warning');
-                    pauseBtn.classList.add('btn-success');
-                }
+                if (pauseBtn) { pauseBtn.textContent = 'Resume'; pauseBtn.classList.replace('btn-warning', 'btn-success'); }
             }
         };
-        
-        // Function to resume the replay
-        window.resumeReplay = function() {
+        window.resumeReplay = () => {
             if (isPaused && isReplaying) {
-                // Calculate how long we were paused
                 const pauseDuration = Date.now() - pauseStartTime;
                 totalPausedTime += pauseDuration;
-                
-                // Adjust start time to account for pause duration
-                replayStartTime += pauseDuration;
-                
-                // Resume audio if it exists
-                if (audioElement) {
-                    audioElement.play().catch(error => {
-                        logMessage('Error resuming audio: ' + error.message, 'ERROR');
-                    });
-                }
-                
-                // Resume animation
-                if (!animationFrameId && currentDataIndex < sortedMouseData.length) {
-                    animationFrameId = requestAnimationFrame(updateCursorPosition);
-                }
-        
                 isPaused = false;
-                pauseStartTime = 0;
-                
-                logMessage('Replay resumed', 'INFO');
-                
-                // Update pause button
+                if (audioElement) audioElement.play().catch(e => logMessage('Audio resume error: '+e.message, 'ERROR'));
+                animationFrameId = requestAnimationFrame(replayLoop);
+                logMessage('Replay V2: Resumed', 'INFO');
+                // Update button UI
                 const pauseBtn = document.getElementById('replay-pause-btn');
-                if (pauseBtn) {
-                    pauseBtn.textContent = 'Pause';
-                    pauseBtn.classList.remove('btn-success');
-                    pauseBtn.classList.add('btn-warning');
-                }
+                if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.classList.replace('btn-success', 'btn-warning'); }
             }
         };
-        
-        // Function to toggle pause/resume
-        window.toggleReplayPause = function() {
-            if (isPaused) {
-                window.resumeReplay();
-            } else {
-                window.pauseReplay();
-            }
-        };
-        
-        // Function to stop the replay
-        window.stopReplay = function() {
+        window.toggleReplayPause = () => { isPaused ? window.resumeReplay() : window.pauseReplay(); };
+        window.stopReplay = () => {
+            logMessage('Replay V2: Stopped by user', 'INFO');
             isReplaying = false;
-            
-            // Stop audio if it exists
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.currentTime = 0;
-            }
-            
-            // Cancel animation
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
-            
-            // Hide cursor and cleanup - specify this is a complete stop (true)
-            window.DrawingTools.hideReplayCursor(true);
-            
-            logMessage('Replay stopped by user', 'INFO');
-            
-            // Reset replay button using the helper function
+            if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; URL.revokeObjectURL(audioElement.src); }
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            window.DrawingTools.hideReplayCursor(true); // Full cleanup
             resetReplayButton();
+            removeReplayControls();
         };
-        
-        // If we have mouse data, animate it
-        let currentDataIndex = 0;
-        
-        if (sortedMouseData.length > 0) {
-            // Function to update cursor position based on elapsed time
-            function updateCursorPosition() {
-                if (!isReplaying || isPaused) return;
-                
-                // Calculate elapsed time since replay started, accounting for pauses
-                const elapsedMs = Date.now() - replayStartTime;
-                
-                // Find all data points that should have happened by now
-                while (currentDataIndex < sortedMouseData.length && 
-                       sortedMouseData[currentDataIndex].timeOffset <= elapsedMs) {
-                    
-                    // Get the current data point
-                    const dataPoint = sortedMouseData[currentDataIndex];
-                    
-                    // Normalize activeTool property (support both new and legacy formats)
-                    if (!dataPoint.activeTool) {
-                        // Handle legacy data format
-                        if (dataPoint.isBoundingBox) {
-                            dataPoint.activeTool = 'boundingBox';
-                        } else if (dataPoint.isLaserPointer) {
-                            dataPoint.activeTool = 'laserPointer';
-                        } else {
-                            dataPoint.activeTool = 'none';
+
+        // Setup listeners for inline controls
+         const pauseBtn = document.getElementById('replay-pause-btn');
+         const stopBtn = document.getElementById('replay-stop-btn');
+         if(pauseBtn) pauseBtn.onclick = window.toggleReplayPause;
+         if(stopBtn) stopBtn.onclick = window.stopReplay;
+
+
+        // --- Audio Setup --- //
+        let audioStarted = false;
+        const startReplayProcess = () => {
+            replayStartTime = Date.now(); // Set precise start time
+            logMessage(`Replay V2: Starting main loop at ${replayStartTime}`, 'DEBUG');
+            replayLoop(); // Start the animation loop
+        };
+
+        if (audioBlob) {
+            const audioURL = URL.createObjectURL(audioBlob);
+            audioElement = new Audio(audioURL);
+            audioElement.onended = () => { logMessage('Replay V2: Audio ended', 'INFO'); };
+            audioElement.oncanplaythrough = () => {
+                 logMessage('Replay V2: Audio ready.', 'DEBUG');
+                 if (!audioStarted) {
+                     audioStarted = true;
+                     audioElement.play().catch(e => logMessage('Audio play error: '+e.message, 'ERROR'));
+                     startReplayProcess(); // Start loop synced with audio
+                 }
+            };
+            audioElement.onerror = (e) => {
+                logMessage('Replay V2: Audio error: ' + (e.target.error?.message || 'Unknown error'), 'ERROR');
+                 if (!audioStarted) { // If audio fails, start visuals anyway
+                     audioStarted = true;
+                     startReplayProcess();
+                 }
+            };
+             // Load audio. If it fails to load/play, startReplayProcess will be called by onerror.
+            audioElement.load();
+            logMessage('Replay V2: Audio loading initiated...', 'DEBUG');
+            // Safety timeout: If audio doesn't report ready in 2s, start visuals anyway
+            setTimeout(() => {
+                 if (!audioStarted) {
+                     logMessage('Replay V2: Audio readiness timeout, starting visuals.', 'WARN');
+                     audioStarted = true;
+                     startReplayProcess();
+                 }
+            }, 2000);
+
+        } else {
+            logMessage('Replay V2: No audio found.', 'INFO');
+            startReplayProcess(); // Start visuals immediately if no audio
+        }
+
+
+        // --- Main Replay Loop --- //
+        function replayLoop() {
+            if (!isReplaying || isPaused) {
+                if (isReplaying) animationFrameId = requestAnimationFrame(replayLoop);
+                return;
+            }
+
+            cursorNeedsUpdate = false; // <<< RESET FLAG AT START OF FRAME >>>
+
+            const elapsedMs = Date.now() - replayStartTime;
+            let eventsToProcess = [];
+
+            // Gather events that should have occurred by now
+            while (currentEventIndex < allEvents.length && allEvents[currentEventIndex].replay_time <= elapsedMs) {
+                eventsToProcess.push(allEvents[currentEventIndex]);
+                currentEventIndex++;
+            }
+
+            // Process gathered events
+            if (eventsToProcess.length > 0) {
+                eventsToProcess.forEach(event => {
+                    try {
+                        let cursorNeedsUpdateFromEvent = false; // Track if this specific event type should update cursor pos
+                        switch (event.category) {
+                            case 'initial_state': break; // Already handled
+                            case 'tool_change':
+                                logMessage(`Replay V2: Tool changed to ${event.tool_name} at ${event.replay_time.toFixed(0)}ms`, 'DEBUG');
+                                // TODO: Update UI button highlights if desired
+                                break;
+                            case 'image_adjustments':
+                                logMessage(`Replay V2: Applying ${event.adjustment_type}=${event.value} at ${event.replay_time.toFixed(0)}ms`, 'DEBUG');
+                                const slider = document.getElementById(event.adjustment_type);
+                                if (slider) slider.value = event.value;
+                                if (window.updateImageFilters) window.updateImageFilters();
+                                break;
+                            case 'laser_pointer':
+                                logMessage(`Replay V2: Laser Pointer event started (ID: ${event.event_id}) at ${event.replay_time.toFixed(0)}ms`, 'DEBUG');
+                                console.log('  Laser Event Data:', JSON.stringify(event)); // <<< ADDED LOG
+                                activeLaserPoints = event.points || [];
+                                currentLaserPointIndex = 0;
+                                activeLaserEventDetails = event; // Store the main event details
+
+                                // <<< NEW: Set initial cursor position from the first point >>>
+                                if (activeLaserPoints.length > 0 && typeof activeLaserPoints[0].x === 'number' && typeof activeLaserPoints[0].y === 'number') {
+                                    lastCursorPos = { x: activeLaserPoints[0].x, y: activeLaserPoints[0].y };
+                                    cursorNeedsUpdate = true; // Ensure it gets updated visually in this frame
+                                    logMessage(`   Set initial cursor for laser event to (${lastCursorPos.x.toFixed(0)}, ${lastCursorPos.y.toFixed(0)})`, 'DEBUG');
+                                } else {
+                                     logMessage('   Warning: Could not set initial cursor position from first laser point (missing or invalid).', 'WARN');
+                                }
+                                // <<< END NEW SECTION >>>
+
+                                if (window.DrawingTools?.startLaserTrail) {
+                                    window.DrawingTools.startLaserTrail();
+                                } else { logMessage('startLaserTrail not found', 'ERROR'); }
+                                break;
+                            case 'bounding_box':
+                                logMessage(`Replay V2: Bounding Box event started (ID: ${event.event_id}, Mode: ${event.mode}) at ${event.replay_time.toFixed(0)}ms`, 'DEBUG');
+                                activeBBoxPoints = event.intermediate_coords || [];
+                                currentBBoxPointIndex = 0;
+                                activeBBoxEventDetails = event;
+                                if (activeBBoxPoints.length > 0) {
+                                    const firstCoord = activeBBoxPoints[0];
+                                    if (window.DrawingTools?.startReplayBoundingBox) {
+                                        window.DrawingTools.startReplayBoundingBox(firstCoord.left, firstCoord.top, event.mode);
+                                        // Set initial cursor position based on the start
+                                        lastCursorPos = { x: firstCoord.left, y: firstCoord.top };
+                                        cursorNeedsUpdateFromEvent = true;
+                                    } else { logMessage('startReplayBoundingBox not found', 'ERROR'); }
+                                } else if (event.final_coords) {
+                                    // Handle case where only final coords exist
+                                     if (window.DrawingTools?.startReplayBoundingBox && window.DrawingTools?.updateReplayBoundingBox) {
+                                         window.DrawingTools.startReplayBoundingBox(event.final_coords.left, event.final_coords.top, event.mode);
+                                         window.DrawingTools.updateReplayBoundingBox(event.final_coords, event.mode);
+                                         lastCursorPos = { x: event.final_coords.left, y: event.final_coords.top };
+                                         cursorNeedsUpdateFromEvent = true;
+                                     } else { logMessage('Bounding box replay functions not found!', 'ERROR'); }
+                                }
+                                break;
+                            default:
+                                logMessage(`Replay V2: Unknown event category: ${event.category}`, 'WARN');
                         }
+                         // Update main cursor pos tracker if this event specifically sets it
+                         if (cursorNeedsUpdateFromEvent) {
+                             cursorNeedsUpdate = true;
+                         }
+                    } catch (handlerError) {
+                         logMessage(`Replay V2: Error handling event ${event.event_id} (${event.category}): ${handlerError.message}`, 'ERROR');
+                         console.error(handlerError);
                     }
-                    
-                    // Tool-specific logging
-                    if (dataPoint.activeTool === 'boundingBox') {
-                        if (dataPoint.type !== 'move' || Math.random() < 0.05) { // Log move events occasionally
-                            logMessage(`Replaying bounding box ${dataPoint.type}: mode=${dataPoint.boundingbox_mode || 'unknown'}, at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})`, 'DEBUG');
-                            
-                            // Add detailed box coordinates if they exist
-                            if (dataPoint.boxCoords) {
-                                const coords = dataPoint.boxCoords;
-                                logMessage(`Box: left=${Math.round(coords.left)}, top=${Math.round(coords.top)}, width=${Math.round(coords.width)}, height=${Math.round(coords.height)}`, 'DEBUG');
-                            }
-                        }
-                    } else if (dataPoint.activeTool === 'laserPointer') {
-                        if (dataPoint.type !== 'move' || Math.random() < 0.01) {
-                            logMessage(`Replaying laser ${dataPoint.type} at (${Math.round(dataPoint.x)}, ${Math.round(dataPoint.y)})`, 'DEBUG');
-                        }
-                    }
-                    
-                    // Update cursor position using DrawingTools
-                    window.DrawingTools.updateReplayCursor(dataPoint);
-                    
-                    // Move to next data point
-                    currentDataIndex++;
+                });
+            }
+
+            // --- Handle ongoing Laser Pointer Points --- //
+            let processedLaserPointThisFrame = false;
+            // console.log(`DEBUG: Checking laser points. Active: ${!!activeLaserEventDetails}, Index: ${currentLaserPointIndex}, Total Points: ${activeLaserPoints?.length}, Elapsed: ${elapsedMs.toFixed(0)}ms`); // <<< REMOVED previous basic log
+            /* // <<< REMOVED detailed pre-check log block
+            if (activeLaserEventDetails && activeLaserPoints && activeLaserPoints.length > currentLaserPointIndex) {
+                const nextPointTime = activeLaserPoints[currentLaserPointIndex].timeOffset;
+                const comparison = `${nextPointTime?.toFixed(2)} <= ${elapsedMs.toFixed(2)}`;
+                console.log(`DEBUG: Laser point check: Index=${currentLaserPointIndex}, NextPointTime=${nextPointTime?.toFixed(2)}, Elapsed=${elapsedMs.toFixed(2)}, Condition=${comparison}, Result=${nextPointTime <= elapsedMs}`);
+            } else if (activeLaserEventDetails) {
+                console.log(`DEBUG: Laser point check: Index=${currentLaserPointIndex}, No more points left.`);
+            }
+            */
+
+            // Refactored Loop: Process all points ready in this frame
+            while (activeLaserEventDetails && currentLaserPointIndex < activeLaserPoints.length) {
+                const point = activeLaserPoints[currentLaserPointIndex];
+
+                // Ensure point data is valid before checking time
+                if (!point || typeof point.timeOffset !== 'number') {
+                    logMessage(`Skipping invalid point data structure at index ${currentLaserPointIndex}`, 'WARN');
+                    currentLaserPointIndex++; // Move past the invalid point
+                    continue; // Go to the next iteration of the while loop
                 }
-                
-                // If we've gone through all data points
-                if (currentDataIndex >= sortedMouseData.length) {
-                    // If we don't have audio or audio has ended, end the replay
-                    if (!audioElement || (audioElement && audioElement.ended)) {
-                        isReplaying = false;
-                        window.DrawingTools.hideReplayCursor();
-                        logMessage('Replay completed', 'INFO');
-                        
-                        // Reset replay button using the helper function
-                        resetReplayButton();
-                        
-                        return;
+
+                // Check if this point's time is ready
+                if (point.timeOffset <= elapsedMs) {
+                    // Process the point
+                    // console.log(`  Processing point ${currentLaserPointIndex}: TimeOffset=${point?.timeOffset?.toFixed(0)}ms, Pos=(${point?.x?.toFixed(0)}, ${point?.y?.toFixed(0)})`);
+                    if (typeof point.x === 'number' && typeof point.y === 'number') {
+                        if (window.DrawingTools?.addToLaserTrail) {
+                            console.log(`    Calling addToLaserTrail for point index ${currentLaserPointIndex} (${point.x.toFixed(0)}, ${point.y.toFixed(0)}) at elapsed ${elapsedMs.toFixed(0)}ms`);
+                            window.DrawingTools.addToLaserTrail(point.x, point.y);
+                            lastCursorPos = { x: point.x, y: point.y }; // Update cursor position
+                            cursorNeedsUpdate = true;
+                            processedLaserPointThisFrame = true;
+                        } else {
+                            logMessage('addToLaserTrail function not found', 'ERROR');
+                            activeLaserEventDetails = null; // Stop trying if function is missing
+                            break; // Exit while loop
+                        }
+                    } else {
+                        logMessage(`Skipping invalid point coordinates at index ${currentLaserPointIndex}`, 'WARN');
                     }
-                } 
-                
-                // Continue animation
-                if (isReplaying && !isPaused) {
-                    animationFrameId = requestAnimationFrame(updateCursorPosition);
+                    currentLaserPointIndex++; // Move to the next point for the next iteration
+            } else {
+                    // This point is in the future, break out of the loop for this frame
+                    // console.log(`DEBUG: Point ${currentLaserPointIndex} (${point.timeOffset.toFixed(0)}ms) is in the future (Elapsed: ${elapsedMs.toFixed(0)}ms). Breaking inner loop.`);
+                    break;
                 }
             }
-            
-            // Start the animation
-            updateCursorPosition();
-        } else if (audioElement) {
-            // If we only have audio but no mouse data
-            logMessage('Playing audio only (no mouse data to replay)', 'INFO');
+
+            // Check if the main laser event itself has ended (outside the point processing loop)
+            if (activeLaserEventDetails && elapsedMs >= (activeLaserEventDetails.end_time_offset ?? Infinity)) {
+                logMessage(`Replay V2: Laser Pointer event (ID: ${activeLaserEventDetails.event_id}) finished at ${elapsedMs.toFixed(0)}ms`, 'DEBUG');
+                if (window.DrawingTools?.clearLaserTrail) {
+                    window.DrawingTools.clearLaserTrail(); // Clear visual trail now
+                } else { logMessage('clearLaserTrail not found', 'ERROR'); }
+
+                // <<< ADD: Hide the cursor element itself when laser ends >>>
+                if (window.DrawingTools?.hideReplayCursor) {
+                    logMessage('   Hiding replay cursor element as laser event ended.', 'DEBUG');
+                    // Pass false to just hide, not full cleanup (might be needed later by stopReplay)
+                    window.DrawingTools.hideReplayCursor(false);
+                } else {
+                    logMessage('   hideReplayCursor function not found.', 'ERROR');
+                }
+                // <<< END ADDITION >>>
+
+                activeLaserEventDetails = null; // Mark as inactive
+                activeLaserPoints = null;
+                currentLaserPointIndex = 0;
+            }
+
+            // --- Handle ongoing Bounding Box Intermediate Points --- //
+            let processedBBoxPointThisFrame = false;
+            while (activeBBoxEventDetails && currentBBoxPointIndex < activeBBoxPoints.length && activeBBoxPoints[currentBBoxPointIndex].timeOffset <= elapsedMs) {
+                const coord = activeBBoxPoints[currentBBoxPointIndex];
+                if (coord && typeof coord.left === 'number' && typeof coord.top === 'number' && typeof coord.width === 'number' && typeof coord.height === 'number') {
+                    if (window.DrawingTools?.updateReplayBoundingBox) {
+                        window.DrawingTools.updateReplayBoundingBox(coord, activeBBoxEventDetails.mode);
+                        processedBBoxPointThisFrame = true;
+                         // Maybe update cursor to corner being dragged? For now, no cursor update based on box.
+                        } else {
+                        logMessage('updateReplayBoundingBox not found!', 'ERROR');
+                        activeBBoxEventDetails = null; // Stop trying if function missing
+                    }
+                } else {
+                    logMessage(`Skipping invalid BBox coord at index ${currentBBoxPointIndex}`, 'WARN');
+                }
+                currentBBoxPointIndex++;
+            }
+
+            // Check if the main bounding box event itself has ended
+            if (activeBBoxEventDetails && elapsedMs >= (activeBBoxEventDetails.end_time_offset ?? Infinity)) {
+                logMessage(`Replay V2: Bounding Box event (ID: ${activeBBoxEventDetails.event_id}) finished at ${elapsedMs.toFixed(0)}ms`, 'DEBUG');
+                const finalCoords = activeBBoxEventDetails.final_coords;
+                if (finalCoords && window.DrawingTools?.updateReplayBoundingBox) {
+                     window.DrawingTools.updateReplayBoundingBox(finalCoords, activeBBoxEventDetails.mode);
+                     logMessage(`Applied final bounding box coords: ${JSON.stringify(finalCoords)}`, 'TRACE');
+                } else if (!finalCoords && window.DrawingTools?.removeReplayBoundingBox) {
+                     window.DrawingTools.removeReplayBoundingBox();
+                     logMessage(`Removed invalid final bounding box (ID: ${activeBBoxEventDetails.event_id})`, 'DEBUG');
+                } else if (finalCoords && !window.DrawingTools?.updateReplayBoundingBox) {
+                     logMessage('updateReplayBoundingBox not found for final coords!', 'ERROR');
+                } else if (!finalCoords && !window.DrawingTools?.removeReplayBoundingBox) {
+                     logMessage('removeReplayBoundingBox not found for invalid final box!', 'ERROR');
+                }
+                activeBBoxEventDetails = null; // Mark as inactive
+                activeBBoxPoints = null;
+                currentBBoxPointIndex = 0;
+            }
+
+            // --- Update Cursor Position --- //
+            if (cursorNeedsUpdate) {
+                replayCursor.style.left = `${lastCursorPos.x}px`;
+                replayCursor.style.top = `${lastCursorPos.y}px`;
+                updateCoordinatesDisplay(Math.round(lastCursorPos.x), Math.round(lastCursorPos.y));
+            }
+
+            // --- Check for Replay End --- //
+            if (currentEventIndex >= allEvents.length && !activeLaserEventDetails && !activeBBoxEventDetails /* Add other active event checks here */) {
+                if (!audioElement || audioElement.ended) {
+                        isReplaying = false;
+                    logMessage('Replay V2: Completed (all events processed)', 'INFO');
+                    window.stopReplay(); // Use stop function for proper cleanup
+                    return; // End the loop
+                }
+            }
+
+            // Request next frame
+            animationFrameId = requestAnimationFrame(replayLoop);
         }
-        
-        // Hide main replay button
-        const replayBtn = document.getElementById('replay-btn');
-        if (replayBtn) {
-            replayBtn.classList.add('d-none');
-        }
+
+    } catch (error) {
+        console.error('Replay V2: Error during replay setup or execution:', error);
+        logMessage('Replay V2: Error - ' + error.message, 'ERROR');
+        resetReplayButton();
+        removeReplayControls();
+        if (window.DrawingTools) window.DrawingTools.hideReplayCursor(true);
+        console.log('DEBUG: Checking window.DrawingTools right before stopReplay cleanup:', window.DrawingTools); // <<< ADDED LOG
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        console.log('DEBUG: Keys on window.DrawingTools before stopReplay error handler cleanup:', Object.keys(window.DrawingTools || {})); // <<< ADDED LOG
+        window.DrawingTools.hideReplayCursor(true);
     }
 }
 
@@ -3008,7 +2277,7 @@ function prepareEmailData(emailAddress, senderName, notification) {
             dataUrl: null,
             duration: 0
         },
-            mouseData: mouseData || [],
+            mouseData: window.recordedEvents.audio_recording || [],
         annotations: []
     };
     
@@ -3504,7 +2773,7 @@ function logMouseDataDiagnostics(data, context) {
  */
 function saveMouseDataForDebug() {
     try {
-        if (mouseData.length === 0) {
+        if (window.recordedEvents.audio_recording.length === 0) {
             logMessage('No mouse data to save for debugging', 'WARN');
             return;
         }
@@ -3514,7 +2783,7 @@ function saveMouseDataForDebug() {
         const filename = `mouse-data-debug-${timestamp}.json`;
         
         // Create diagnostics report
-        const diagnostics = generateMouseDataDiagnostics(mouseData);
+        const diagnostics = generateMouseDataDiagnostics(window.recordedEvents.audio_recording);
         
         // Create debug object with diagnostics and raw data
         const debugData = {
@@ -3522,7 +2791,7 @@ function saveMouseDataForDebug() {
                 timestamp: timestamp,
                 diagnostics: diagnostics
             },
-            mouseData: mouseData
+            mouseData: window.recordedEvents.audio_recording
         };
         
         // Convert to JSON and save
@@ -3533,7 +2802,7 @@ function saveMouseDataForDebug() {
         downloadFile(jsonBlob, filename);
         
         logMessage(`Mouse data saved for debugging to ${filename}`, 'INFO');
-        logMessage(`File contains ${mouseData.length} mouse data points`, 'INFO');
+        logMessage(`File contains ${window.recordedEvents.audio_recording.length} mouse data points`, 'INFO');
         
         return true;
     } catch (error) {
@@ -3544,6 +2813,67 @@ function saveMouseDataForDebug() {
 } 
 
 // Export functions for use in other modules - No longer exporting drawing tool functions
-window.startCaptureMouseData = startCaptureMouseData;
-window.stopCaptureMouseData = stopCaptureMouseData;
+// window.startCaptureMouseData = startCaptureMouseData; // REMOVED
+// window.stopCaptureMouseData = stopCaptureMouseData; // REMOVED
 window.saveMouseDataForDebug = saveMouseDataForDebug; 
+
+// *** NEW FUNCTION: Record Initial State ***
+/**
+ * Records the initial state of the application when recording starts.
+ */
+function recordInitialState() {
+    if (!isRecording) { // Should ideally be called right before isRecording is set true
+        const initialStateEvent = {
+            event_id: `init_${Date.now()}`,
+            time_offset: 0, // Occurs exactly at the start
+            // Image Info (assuming canvas is loaded)
+            image_url: document.getElementById('url-image')?.value || null,
+            // TODO: Get actual image dimensions from canvas/image object if available
+            image_width: window.canvas?.width || null,
+            image_height: window.canvas?.height || null,
+            // Adjustments
+            brightness: parseInt(document.getElementById('brightness')?.value || '0'),
+            contrast: parseInt(document.getElementById('contrast')?.value || '0'),
+            cursor_size: parseInt(document.getElementById('cursor-size')?.value || DEFAULT_CURSOR_SIZE.toString()),
+            // TODO: Add other relevant states (e.g., current tool, zoom level?)
+        };
+        window.recordedEvents.initial_state.push(initialStateEvent);
+        logMessage(`Initial state recorded: ${JSON.stringify(initialStateEvent)}`, 'DEBUG');
+    } else {
+        logMessage('Warning: Attempted to record initial state while already recording.', 'WARN');
+    }
+}
+
+// *** NEW FUNCTION: Record Audio Event ***
+/**
+ * Records the start or stop of the audio recording itself.
+ */
+function recordAudioEvent(type) {
+    const now = Date.now();
+    const timeOffset = getCurrentRecordingTime();
+
+    if (type === 'start') {
+        const audioStartEvent = {
+            event_id: `audio_rec_${now}`,
+            start_time_offset: timeOffset, // Should be very close to 0
+            end_time_offset: null,
+            duration_ms: null
+        };
+        window.recordedEvents.audio_recording.push(audioStartEvent);
+        logMessage(`Audio recording start event recorded at offset ${timeOffset}ms`, 'DEBUG');
+    } else if (type === 'stop') {
+        // Find the latest audio recording event without an end time
+        const lastAudioEvent = window.recordedEvents.audio_recording
+            .filter(event => event.end_time_offset === null)
+            .pop();
+
+        if (lastAudioEvent) {
+            lastAudioEvent.end_time_offset = timeOffset;
+            lastAudioEvent.duration_ms = lastAudioEvent.end_time_offset - lastAudioEvent.start_time_offset;
+            logMessage(`Audio recording stop event recorded at offset ${timeOffset}ms. Duration: ${lastAudioEvent.duration_ms}ms`, 'DEBUG');
+        } else {
+            logMessage('Warning: Could not find active audio recording event to stop.', 'WARN');
+        }
+    }
+}
+

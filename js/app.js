@@ -235,13 +235,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (brightnessSlider && contrastSlider) {
         brightnessSlider.addEventListener('input', function() {
-            logMessage(`Brightness adjusted to: ${this.value}`);
+            const newValue = parseInt(this.value);
+            logMessage(`Brightness adjusted to: ${newValue}`);
             updateImageFilters();
+            recordImageAdjustment('brightness', newValue);
         });
         
         contrastSlider.addEventListener('input', function() {
-            logMessage(`Contrast adjusted to: ${this.value}`);
+            const newValue = parseInt(this.value);
+            logMessage(`Contrast adjusted to: ${newValue}`);
             updateImageFilters();
+            recordImageAdjustment('contrast', newValue);
         });
         
         logMessage('Image adjustment tools enabled', 'DEBUG');
@@ -279,6 +283,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (laserPointerButton) {
         laserPointerButton.addEventListener('click', function() {
             logMessage('Laser Pointer tool selected', 'INFO');
+            recordToolChange('laserPointer');
             
             // Deactivate bounding box if it's active
             if (window.DrawingTools && typeof window.DrawingTools.deactivateBoundingBox === 'function') {
@@ -310,6 +315,12 @@ document.addEventListener('DOMContentLoaded', function() {
         logMessage('Laser Pointer button enabled', 'DEBUG');
     } else {
         logMessage('Could not find Laser Pointer button', 'WARN');
+    }
+    
+    // ADDED: Make Laser Pointer the default active tool on startup
+    if (laserPointerButton) {
+        laserPointerButton.click();
+        logMessage('Set Laser Pointer as default tool', 'INFO');
     }
     
     // Add event listeners for the Pointer and Draw mode buttons
@@ -445,6 +456,8 @@ function setupEventListeners() {
     if (boundingBoxButton) {
         boundingBoxButton.addEventListener('click', function() {
             logMessage('Bounding Box tool selected', 'INFO');
+            recordToolChange('boundingBox');
+            
             if (window.DrawingTools && typeof window.DrawingTools.initBoundingBox === 'function') {
                 // Deactivate other tools first if needed
                 if (typeof window.DrawingTools.deactivateBoundingBox === 'function') {
@@ -511,6 +524,7 @@ function setupEventListeners() {
     if (laserPointerButton) {
         laserPointerButton.addEventListener('click', function() {
             logMessage('Laser Pointer tool selected', 'INFO');
+            recordToolChange('laserPointer');
             
             // Deactivate bounding box if it's active
             if (window.DrawingTools && typeof window.DrawingTools.deactivateBoundingBox === 'function') {
@@ -969,4 +983,60 @@ function parseUrlForImage() {
     }
 }
 
-console.log('=== app.js: LOADING COMPLETED ==='); 
+console.log('=== app.js: LOADING COMPLETED ===');
+
+// *** NEW FUNCTION: Record Image Adjustment ***
+/**
+ * Records an image adjustment event if recording is active.
+ * @param {string} adjustmentType - 'brightness' or 'contrast'
+ * @param {number} value - The new value
+ */
+function recordImageAdjustment(adjustmentType, value) {
+    if (typeof window.isRecording === 'function' && window.isRecording() && !window.isPaused()) {
+        const now = Date.now();
+        const timeOffset = typeof window.getCurrentRecordingTime === 'function' ? window.getCurrentRecordingTime() : now;
+
+        const adjustmentEvent = {
+            event_id: `adjust_${adjustmentType}_${now}`,
+            time_offset: timeOffset,
+            adjustment_type: adjustmentType,
+            value: value
+        };
+
+        // Ensure category exists
+        if (!window.recordedEvents.image_adjustments) {
+            window.recordedEvents.image_adjustments = [];
+        }
+        window.recordedEvents.image_adjustments.push(adjustmentEvent);
+        logMessage(`Recorded image adjustment: ${adjustmentType}=${value} at offset ${timeOffset}ms`, 'DEBUG');
+    } else {
+        logMessage(`Image adjustment event ignored: ${adjustmentType}=${value} (not recording)`, 'DEBUG');
+    }
+}
+
+// *** NEW FUNCTION: Record Tool Change ***
+/**
+ * Records a tool change event if recording is active.
+ * @param {string} toolName - The name of the newly selected tool
+ */
+function recordToolChange(toolName) {
+    if (typeof window.isRecording === 'function' && window.isRecording() && !window.isPaused()) {
+        const now = Date.now();
+        const timeOffset = typeof window.getCurrentRecordingTime === 'function' ? window.getCurrentRecordingTime() : now;
+
+        const toolChangeEvent = {
+            event_id: `tool_${toolName}_${now}`,
+            time_offset: timeOffset,
+            tool_name: toolName
+        };
+
+        // Ensure category exists
+        if (!window.recordedEvents.tool_change) {
+            window.recordedEvents.tool_change = [];
+        }
+        window.recordedEvents.tool_change.push(toolChangeEvent);
+        logMessage(`Recorded tool change: ${toolName} at offset ${timeOffset}ms`, 'DEBUG');
+    } else {
+        logMessage(`Tool change event ignored: ${toolName} (not recording)`, 'DEBUG');
+    }
+} 

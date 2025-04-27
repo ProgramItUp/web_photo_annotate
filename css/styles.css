@@ -1,7 +1,7 @@
 /* Canvas and container styles */
 .canvas-container {
     position: relative;
-    margin: 10px 0;
+    margin: 0px 0;
     border: 1px solid #ccc;
     overflow: hidden;
 }
