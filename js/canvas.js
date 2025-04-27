@@ -109,60 +109,50 @@ window.fabric = fabric;
         }
         
         const canvas = window.canvas;
+        const container = document.getElementById('image-container');
         
         // Get the current image object
         const objects = canvas.getObjects();
         const imgObject = objects.find(obj => obj.type === 'image');
         
         if (!imgObject) {
-            // If no image, just resize to container width
-            canvas.setWidth(document.getElementById('image-container').offsetWidth);
+            // If no image, resize to container width (or some default)
+            canvas.setWidth(container.offsetWidth);
+            canvas.setHeight(400); // Default height if no image
             canvas.renderAll();
             return;
         }
         
-        // Get the container width
-        const containerWidth = document.getElementById('image-container').offsetWidth;
+        // --- MODIFICATION START: Use 1:1 scaling ---
+        const naturalWidth = imgObject.width; // Use image's natural dimensions
+        const naturalHeight = imgObject.height;
+
+        console.log(`Resizing canvas for 1:1 image ${naturalWidth}x${naturalHeight}`);
         
-        // FIXED: Calculate proper aspect ratio using the original image dimensions
-        const originalWidth = imgObject.width;
-        const originalHeight = imgObject.height;
-        const aspectRatio = originalHeight / originalWidth;
+        // Update canvas dimensions to match image exactly
+        canvas.setWidth(naturalWidth);
+        canvas.setHeight(naturalHeight);
         
-        // FIXED: Calculate height based on container width and original aspect ratio
-        const newHeight = containerWidth * aspectRatio;
+        // Update container size to match canvas (important for layout)
+        container.style.width = `${naturalWidth}px`;
+        container.style.height = `${naturalHeight}px`;
         
-        console.log(`Resizing canvas for image ${originalWidth}x${originalHeight}, aspect ratio ${aspectRatio.toFixed(2)}`);
-        
-        // Update canvas dimensions
-        canvas.setWidth(containerWidth);
-        canvas.setHeight(newHeight);
-        
-        // Update container height
-        document.getElementById('image-container').style.height = `${newHeight}px`;
-        
-        // FIXED: Calculate proper scale factor
-        const scaleX = containerWidth / originalWidth;
-        const scaleY = newHeight / originalHeight;
-        
-        // Use the same scale for both dimensions to preserve aspect ratio
-        const scale = Math.min(scaleX, scaleY);
-        
-        // FIXED: Apply proper scaling
+        // Set image scale to 1 (100%)
         imgObject.set({
-            scaleX: scale,
-            scaleY: scale,
+            scaleX: 1,
+            scaleY: 1,
             left: 0,
             top: 0,
             originX: 'left',
             originY: 'top'
         });
+        // --- MODIFICATION END ---
         
         // Redraw the canvas
         canvas.renderAll();
         
         if (typeof logMessage === 'function') {
-            logMessage(`Canvas resized to ${containerWidth}x${Math.round(newHeight)} pixels`);
+            logMessage(`Canvas resized to image natural size: ${naturalWidth}x${naturalHeight} pixels`);
         }
     };
     
@@ -200,6 +190,9 @@ window.fabric = fabric;
             // IMPORTANT: Directly send this data to the recording system
             // This ensures mouse data is captured even if event listeners aren't being triggered
             if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
+                // *** START DIAGNOSTIC LOGGING ***
+                console.log(`RECORDING COORDS (Canvas): X=${pointer.x}, Y=${pointer.y}`);
+                // *** END DIAGNOSTIC LOGGING ***
                 window.updateCursorTrailPosition(pointer.x, pointer.y);
                 logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
             }
@@ -292,36 +285,64 @@ function calculateDistance(p1, p2) {
 }
 
 /**
+ * NEW: Convert canvas coordinates to image pixel coordinates
+ * @param {Object} canvasPoint - Point with x, y in canvas space
+ * @returns {Object|null} Point with x, y in image pixel space, or null if no image
+ */
+function getPixelCoordinatesFromCanvasPoint(canvasPoint) {
+    if (!window.canvas) return null;
+    const imgObject = window.canvas.getObjects().find(obj => obj.type === 'image');
+    if (!imgObject) return null;
+
+    // Calculate the scale factor (assuming uniform scaling for simplicity here)
+    // Based on the logic in resizeCanvas
+    const scale = imgObject.scaleX; // Assuming scaleX and scaleY are the same
+
+    // Adjust for image position on canvas (usually 0,0 but good practice)
+    const imageOriginX = imgObject.left;
+    const imageOriginY = imgObject.top;
+
+    // Convert canvas coords to image coords
+    const pixelX = Math.floor((canvasPoint.x - imageOriginX) / scale);
+    const pixelY = Math.floor((canvasPoint.y - imageOriginY) / scale);
+
+    // Optional: Clamp to image natural dimensions if needed
+    // const clampedX = Math.max(0, Math.min(pixelX, imgObject.width - 1));
+    // const clampedY = Math.max(0, Math.min(pixelY, imgObject.height - 1));
+
+    return { x: pixelX, y: pixelY };
+}
+
+/**
  * Check if mouse has moved significantly and log if needed
- * @param {Object} currentPos - Current mouse position
+ * @param {Object} currentPos - Current mouse position (canvas coordinates)
  */
 function checkAndLogMouseMovement(currentPos) {
-    // Convert from canvas coordinates to screen coordinates
-    const canvas = window.canvas;
-    if (!canvas) return;
+    // Convert from canvas coordinates to screen coordinates (Original logic, now unused for display)
+    // const canvas = window.canvas;
+    // if (!canvas) return;
+    // const canvasElement = canvas.lowerCanvasEl;
+    // const rect = canvasElement.getBoundingClientRect();
+    // const scaleFactor = zoomLevel || 1;
+    // const screenX = Math.round(currentPos.x);
+    // const screenY = Math.round(currentPos.y);
     
-    // Get canvas DOM element and its position
-    const canvasElement = canvas.lowerCanvasEl;
-    const rect = canvasElement.getBoundingClientRect();
-    
-    // Scale the coordinates based on canvas zoom
-    const scaleFactor = zoomLevel || 1;
-    
-    // Calculate screen coordinates
-    const screenX = Math.round(currentPos.x);
-    const screenY = Math.round(currentPos.y);
-    
+    // *** NEW: Get Image Pixel Coordinates ***
+    const pixelCoords = getPixelCoordinatesFromCanvasPoint(currentPos);
+    if (!pixelCoords) return; // Exit if no image or coords couldn't be calculated
+
     const distance = calculateDistance(
-        { x: screenX, y: screenY }, 
-        lastLoggedMousePosition
+        pixelCoords, 
+        lastLoggedMousePosition // Assuming lastLoggedMousePosition stores pixel coords now
     );
     
+    // Log based on pixel coordinate distance
     if (distance > MOUSE_POSITION_TOLERANCE) {
-        logMessage(`Mouse moved: X: ${screenX}, Y: ${screenY} (${distance.toFixed(1)}px)`);
-        lastLoggedMousePosition = { x: screenX, y: screenY };
+        logMessage(`Mouse moved (Canvas: ${Math.round(currentPos.x)},${Math.round(currentPos.y)} | Pixel: ${pixelCoords.x},${pixelCoords.y}) - Dist: ${distance.toFixed(1)}px`);
+        lastLoggedMousePosition = pixelCoords; 
         
-        // Update coordinates in UI
-        updateCoordinatesDisplay(screenX, screenY);
+        // Update coordinates in UI with IMAGE PIXEL coordinates
+        updateCoordinatesDisplay(pixelCoords.x, pixelCoords.y);
     }
 }
 
@@ -686,6 +707,9 @@ function updateCursorTrail(pointer) {
         // IMPORTANT: Directly send this data to the recording system
         // This ensures mouse data is captured even if event listeners aren't being triggered
         if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
+            // *** START DIAGNOSTIC LOGGING ***
+            console.log(`RECORDING COORDS (Canvas): X=${pointer.x}, Y=${pointer.y}`);
+            // *** END DIAGNOSTIC LOGGING ***
             window.updateCursorTrailPosition(pointer.x, pointer.y);
             logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
         }
