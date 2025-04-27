@@ -133,10 +133,6 @@ window.fabric = fabric;
         canvas.setWidth(naturalWidth);
         canvas.setHeight(naturalHeight);
         
-        // Update container size to match canvas (important for layout)
-        container.style.width = `${naturalWidth}px`;
-        container.style.height = `${naturalHeight}px`;
-        
         // Set image scale to 1 (100%)
         imgObject.set({
             scaleX: 1,
