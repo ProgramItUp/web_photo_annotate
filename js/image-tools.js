@@ -5,8 +5,6 @@
 // State variables
 let brightnessValue = 0;
 let contrastValue = 0;
-const DEFAULT_BRIGHTNESS = 0;
-const DEFAULT_CONTRAST = 0;
 const DEFAULT_IMAGE_PATH = 'https://prod-images-static.radiopaedia.org/images/157210/332aa0c67cb2e035e372c7cb3ceca2_big_gallery.jpg';
 
 console.log('image-tools.js loaded - DEFAULT_IMAGE_PATH:', DEFAULT_IMAGE_PATH);

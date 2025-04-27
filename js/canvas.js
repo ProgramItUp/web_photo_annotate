@@ -217,7 +217,7 @@ window.fabric = fabric;
 })();
 
 // Constants
-const DEFAULT_CURSOR_SIZE = 10;
+// const DEFAULT_CURSOR_SIZE = 10; // Moved to config.js
 const CURSOR_TRAIL_DURATION = 2000; // Trail duration in milliseconds (1 second)
 
 // State variables - these will be initialized after the canvas is created
@@ -235,6 +235,7 @@ let lastLoggedMousePosition = { x: 0, y: 0 };
 const MOUSE_POSITION_TOLERANCE = 3; // Log when position changes by more than 3 pixels
 let cursorTrailUpdateTimer; // Timer for updating cursor trail
 let lastTrailCleanup = 0; // Time of last trail cleanup
+let contrastFilter = null;
 
 /**
  * Initialize the application's cursor trail

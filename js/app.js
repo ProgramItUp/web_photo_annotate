@@ -426,7 +426,7 @@ function initializeApp() {
         
         logMessage('Application initialized successfully');
         console.log('=== Application initialized successfully ===');
-    } catch (error) {
+            } catch (error) {
         console.error('Fatal error initializing application:', error);
         logMessage('Fatal error initializing application: ' + error.message, 'ERROR');
         alert('Failed to initialize the application. Please check the console for details.');

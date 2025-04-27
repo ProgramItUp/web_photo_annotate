@@ -1,7 +1,8 @@
 const scriptStartTime = Date.now();
-console.log('[PUPPETEER] capture_dom.js script starting execution at ' + new Date().toString() + '...'); // Added startup message with local timezone
+console.log('\x1b[32m[PUPPETEER] capture_dom.js script starting execution at ' + new Date().toString() + '...\x1b[0m'); // Added startup message with local timezone in green
 
 
+global.consoleErrorList = [];
 // capture_dom.js
 const puppeteer = require('puppeteer');
 const fs = require('fs'); // File system module to save the output
@@ -10,7 +11,7 @@ const fs = require('fs'); // File system module to save the output
 async function log_and_shot(page, message) {
     console.log(message); // Log the message first
     if (!page || page.isClosed()) {
-        console.warn('[PUPPETEER] Warning: Page is not available or closed, skipping screenshot.');
+        console.warn('\x1b[33m[PUPPETEER] [WARNING]: Page is not available or closed, skipping screenshot.\x1b[0m');
         return;
     }
     try {
@@ -18,6 +19,7 @@ async function log_and_shot(page, message) {
     } catch (screenshotError) {
         // Log screenshot error but continue script execution
         console.error(`[PUPPETEER] Error taking screenshot after message "${message}":`, screenshotError.message);
+        global.consoleErrorList.push(`Screenshot error: ${screenshotError.message}`);
     }
 }
 // ----------------------------------------
@@ -42,6 +44,7 @@ async function waitForSignal(page, signalName, signalPromise, timeoutMs) {
         return true; // Signal received
     } catch (error) {
         console.error(`[PUPPETEER] ERROR: ${error.message}.`); // Log the specific error (likely timeout)
+        global.consoleErrorList.push(`Signal error: ${error.message}`);
         if (error.message.includes('Timeout')) {
             console.log(`[PUPPETEER] Attempting to take screenshot specifically for ${signalName} timeout...`);
             try {
@@ -49,7 +52,8 @@ async function waitForSignal(page, signalName, signalPromise, timeoutMs) {
                 await page.screenshot({ path: screenshotPath, fullPage: true });
                 console.log(`[PUPPETEER] Timeout screenshot saved to ${screenshotPath}`);
             } catch (timeoutScreenshotError) {
-                console.error('[PUPPETEER] Failed to take timeout-specific screenshot:', timeoutScreenshotError.message);
+                console.error('\x1b[31m[PUPPETEER] [ERROR]: Failed to take timeout-specific screenshot:', timeoutScreenshotError.message, '\x1b[0m');
+                global.consoleErrorList.push(`Timeout screenshot error: ${timeoutScreenshotError.message}`);
             }
         }
         console.warn(`[PUPPETEER] Warning: Proceeding after ${signalName} signal error/timeout. Subsequent steps might fail.`);
@@ -75,10 +79,40 @@ const imageUrlToLoad = 'https://prod-images-static.radiopaedia.org/images/157210
 const outputFile = 'chrome_dump_puppeteer.html'; 
 // -------------------
 
+function logToFileAndConsole(message, level = 'INFO') {
+    const timestamp = new Date().toISOString();
+    // Use string concatenation for file entry to avoid complex escapes in message
+    const logEntry = '[' + timestamp + '] [' + level.padEnd(5) + '] ' + message + '\n';
+
+    // Append to log file
+    fs.appendFileSync('puppeteer_log.txt', logEntry);
+
+    // Log to console with color - ensure template literals for color codes are correct
+    switch (level.toUpperCase()) {
+        case 'INFO':
+            console.log(`\x1b[32m[${level}] ${message}\x1b[0m`); 
+            break;
+        case 'WARN':
+            console.warn(`\x1b[33m[${level}] ${message}\x1b[0m`); 
+            break;
+        case 'ERROR':
+        case 'FATAL':
+            console.error(`\x1b[31m[${level}] ${message}\x1b[0m`); 
+            break;
+        case 'DEBUG':
+            console.log(`\x1b[36m[${level}] ${message}\x1b[0m`); 
+            break;
+        default:
+            console.log(`[${level}] ${message}`);
+            break;
+    }
+}
+
 (async () => {
   // Define page outside try block for finally access
   let page;
   let browser;
+  let pageHasErrors = false; // Flag to track if errors occurred on the page
 
   try {
     
@@ -94,8 +128,14 @@ const outputFile = 'chrome_dump_puppeteer.html';
     await log_and_shot(page, '[PUPPETEER] Page created.');
 
     // --- Listener for Page Errors ---
-    page.on('pageerror', error => {
-      console.error('PAGE ERROR:', error.message); 
+    // Initialize the console error list at the start
+    
+    
+    page.on('pageerror', error => { //this will be thrown when 
+      console.error('\x1b[31m[CONSOLE] PAGE RUNTIME ERROR:', error.message, '\x1b[0m'); 
+      pageHasErrors = true; // Set flag on runtime error
+      // Add error to the list of console errors
+      global.consoleErrorList.push(error.message);
     });
     // ------------------------------
 
@@ -109,7 +149,33 @@ const outputFile = 'chrome_dump_puppeteer.html';
     // Optional: Log console messages from the page to the Node script's console
     page.on('console', msg => {
       const text = msg.text();
-      console.log('PAGE LOG:', text); // Keep page logs as is
+      const type = msg.type().toUpperCase();
+      
+      // Log based on type for clarity
+      if (type === 'ERROR') {
+        // Extract stack trace and location information if available
+        const location = msg.location();
+        const stackTrace = msg.stackTrace ? msg.stackTrace() : [];
+        const locationInfo = location ? 
+          `at ${location.url}:${location.lineNumber}:${location.columnNumber}` : 
+          'location unknown';
+        
+        // Format detailed error message with timestamp
+        const timestamp = new Date().toISOString();
+        const errorDetails = stackTrace.length > 0 ? 
+          `\n    Stack: ${stackTrace.map(frame => 
+            `${frame.functionName || '(anonymous)'} (${frame.url}:${frame.lineNumber}:${frame.columnNumber})`
+          ).join('\n           ')}` : '';
+          
+        console.error('\x1b[31m[CONSOLE ERROR] [${timestamp}]:', text, `\n    Location: ${locationInfo}${errorDetails}`, '\x1b[0m'); // Log console errors in red with details
+        pageHasErrors = true; // Set flag on console error
+        global.consoleErrorList.push(`Console error: ${text}`);
+      } else if (type === 'WARNING') {
+        console.warn('\x1b[33m[CONSOLE WARNING]:', text, '\x1b[0m'); // Log warnings in yellow
+      } else {
+        console.log('[CONSOLE]:', text); // Standard logs
+      }
+
       // Resolve App Ready Promise
       if (text.includes('Application initialized successfully')) {
         console.log('[PUPPETEER] App ready signal detected in console log.'); 
@@ -151,6 +217,7 @@ const outputFile = 'chrome_dump_puppeteer.html';
         await log_and_shot(page, '[PUPPETEER] Completed short pause after dismiss.');
     } catch (promptError) {
         await log_and_shot(page, '[PUPPETEER] Microphone prompt dismiss button not found or timed out. Continuing...');
+        global.consoleErrorList.push(`Microphone prompt error: ${promptError.message}`);
     }
     // --- Dismiss Microphone Prompt End ---
     
@@ -190,6 +257,11 @@ const outputFile = 'chrome_dump_puppeteer.html';
     fs.writeFileSync(outputFile, htmlContent);
     await log_and_shot(page, '[PUPPETEER] Completed save to file.');
 
+    // *** NEW: Check if any errors occurred on the page ***
+    if (pageHasErrors) {
+        throw new Error('Errors were detected on the page console/runtime. Check logs.');
+    }
+
     // --- Take Final Screenshot --- Already done by log_and_shot ---
     // const finalScreenshotPath = 'final_screenshot.png';
     // console.log(`[PUPPETEER] Starting final screenshot save to: ${finalScreenshotPath}`);
@@ -198,7 +270,12 @@ const outputFile = 'chrome_dump_puppeteer.html';
     // ---------------------------
 
   } catch (error) {
-      console.error('[PUPPETEER] An error occurred:', error);
+      console.error('\x1b[31m[PUPPETEER] [ERROR]: An error occurred:', error, '\x1b[0m');
+      console.error('\x1b[31m[PUPPETEER] [ERROR DETAILS]: Message:', error.message, '\x1b[0m');
+      console.error('\x1b[31m[PUPPETEER] [ERROR DETAILS]: Stack:', error.stack, '\x1b[0m');
+      console.error('\x1b[31m[PUPPETEER] [ERROR DETAILS]: Type:', error.constructor.name, '\x1b[0m');
+      if (error.cause) console.error('\x1b[31m[PUPPETEER] [ERROR DETAILS]: Cause:', error.cause, '\x1b[0m');
+      global.consoleErrorList.push(`Script error: ${error.message}`);
       // Optionally, capture a screenshot on error for debugging
       try {
           await log_and_shot(page, '[PUPPETEER] Error occurred. Increasing log area size before taking screenshot...');
@@ -218,7 +295,8 @@ const outputFile = 'chrome_dump_puppeteer.html';
           console.log(`[PUPPETEER] Extra error screenshot saved to ${errorScreenshotPath}`);
           
       } catch (screenshotError) {
-          console.error('[PUPPETEER] Failed to take error screenshot:', screenshotError);
+          console.error('\x1b[31m[PUPPETEER] [ERROR]: Failed to take error screenshot:', screenshotError, '\x1b[0m');
+          global.consoleErrorList.push(`Error screenshot failure: ${screenshotError.message}`);
       }
   } finally {
       // Always close the browser
@@ -228,6 +306,28 @@ const outputFile = 'chrome_dump_puppeteer.html';
           console.log('[PUPPETEER] Completed browser.close().'); // Can't screenshot after close
       } else {
           console.log('[PUPPETEER] Browser was not launched, skipping close.');
+      }
+      
+      // Provide execution status summary with color coding
+      try {
+          let warningMessage = null;
+          const imageLoadTimedOut = (typeof imageLoaded !== 'undefined' && imageLoaded === false);
+
+          if (global.consoleErrorList.length > 0 || pageHasErrors) {
+              warningMessage = 'Execution completed with warnings: Page errors detected (check logs).';
+          } else if (imageLoadTimedOut) {
+              warningMessage = 'Execution completed with warnings: Image loading timed out.';
+          }
+
+          if (warningMessage) {
+               console.warn(`\x1b[33m[PUPPETEER] ${warningMessage}\x1b[0m`);
+          } else {
+              console.log('\x1b[32m[PUPPETEER] Execution completed successfully.\x1b[0m');
+          }
+      } catch (summaryError) {
+          console.error('\x1b[31m[PUPPETEER] Execution status summary error:', summaryError.message, '\x1b[0m');
+          // Avoid pushing to consoleErrorList here as it might not exist if the script failed early
+          // Consider adding to a separate script error list if needed.
       }
   }
 })(); 
