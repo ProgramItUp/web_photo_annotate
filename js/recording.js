@@ -2347,25 +2347,25 @@ async function prepareEmailData(emailAddress, senderName, notification) {
         logMessage(`V2 JSON data prepared (${jsonData.length} characters)`, 'INFO');
 
         // Remove the initial notification
-        if (notification && notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-
+                if (notification && notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+                
         // Show the dialog with the V2 JSON data
         showEmailDataDialog(jsonData); // Pass only the JSON data string
-
+                
         // Reset UI elements (dialog handles its own closing)
-        resetEmailButton();
-
+                resetEmailButton();
+                
     } catch (error) {
         console.error('Error preparing V2 JSON data:', error);
         logMessage('Error preparing V2 JSON data: ' + error.message, 'ERROR');
         alert('An error occurred while preparing the annotation data. See console for details.');
-        resetEmailButton();
-        if (notification && notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-    }
+                resetEmailButton();
+                if (notification && notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }
 }
 
 /**
@@ -2453,7 +2453,7 @@ function showEmailDataDialog(jsonData) {
         jsonData.substring(0, previewLength) + '...\n(Full data too long for preview)' : jsonData;
     
     // Wait for the modal to be fully added to DOM
-    setTimeout(() => {
+        setTimeout(() => {
         // Get references to elements
         const previewTextarea = document.getElementById('jsonPreview');
         const saveButton = document.getElementById('saveJsonDataBtn');
@@ -2467,7 +2467,7 @@ function showEmailDataDialog(jsonData) {
                   // Create instance if it doesn't exist when needed
              }
         }
-
+        
         // Set preview text
         if (previewTextarea) {
             previewTextarea.value = jsonPreviewText;
@@ -2550,7 +2550,7 @@ function showEmailDataDialog(jsonData) {
              alert('Could not display the data dialog. Bootstrap might not be loaded correctly.');
         }
         
-    }, 100);
+        }, 100);
 }
 
 /**
