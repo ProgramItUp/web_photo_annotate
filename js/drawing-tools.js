@@ -486,17 +486,18 @@ function startReplayBoundingBox(x, y, mode) {
             top: y,
             width: 1, // Start with 1px width to ensure visibility
             height: 1, // Start with 1px height to ensure visibility
-            fill: 'rgba(0, 0, 255, 0.3)', // More visible blue fill
+            // --- Match interactive style --- //
+            fill: 'transparent',
             stroke: 'blue',
-            strokeWidth: 3, // Thicker stroke
-            selectable: true,
-            hasControls: true,
-            hasBorders: true,
-            transparentCorners: false,
-            cornerColor: 'blue',
-            cornerSize: 10,
-            cornerStyle: 'circle',
-            // Additional properties to ensure visibility and persistence
+            strokeWidth: 2, 
+            selectable: false,
+            hasControls: false,
+            hasBorders: false,
+            // transparentCorners: false, // Not needed
+            // cornerColor: 'blue',      // Not needed
+            // cornerSize: 10,           // Not needed
+            // cornerStyle: 'circle',    // Not needed
+            // --- End Match interactive style --- //
             evented: false, // Don't allow events to interfere with replay
             objectCaching: false, // Don't cache to ensure updates are visible
             excludeFromExport: true // Don't include in exports
@@ -561,16 +562,18 @@ function updateReplayBoundingBox(coords, mode) {
                 top: coords.top,
                 width: width,
                 height: height,
-                fill: 'rgba(0, 0, 255, 0.3)', // More visible blue fill
+                // --- Match interactive style --- //
+                fill: 'transparent',
                 stroke: 'blue',
-                strokeWidth: 3, // Thicker stroke for visibility
-                selectable: true,
-                hasControls: true,
-                hasBorders: true,
-                transparentCorners: false,
-                cornerColor: 'blue',
-                cornerSize: 10,
-                cornerStyle: 'circle',
+                strokeWidth: 2,
+                selectable: false,
+                hasControls: false,
+                hasBorders: false,
+                // transparentCorners: false, // Not needed
+                // cornerColor: 'blue',      // Not needed
+                // cornerSize: 10,           // Not needed
+                // cornerStyle: 'circle',    // Not needed
+                // --- End Match interactive style --- //
                 evented: false, // Don't allow events to interfere with replay
                 objectCaching: false // Don't cache to ensure updates are visible
             });
@@ -598,7 +601,16 @@ function updateReplayBoundingBox(coords, mode) {
                 left: coords.left,
                 top: coords.top,
                 width: width,
-                height: height
+                height: height,
+                // --- Match interactive style --- //
+                fill: 'transparent',
+                stroke: 'blue',
+                strokeWidth: 2,
+                selectable: false,
+                hasControls: false,
+                hasBorders: false,
+                evented: false
+                // --- End Match interactive style --- //
             });
             
             // Occasionally log the update
@@ -858,17 +870,14 @@ function handleBoundingBoxMouseDown(options) {
                 top: pointer.y,
                 width: 0,
                 height: 0,
-                fill: 'rgba(0, 0, 255, 0.2)',
+                fill: 'transparent', // No fill
                 stroke: 'blue',
                 strokeWidth: 2,
-                selectable: true,
-                hasControls: true,
-                hasBorders: true,
-                transparentCorners: false,
-                cornerColor: 'blue',
-                cornerSize: 10,
-                cornerStyle: 'circle',
-                lockRotation: true
+                selectable: false, // Not selectable
+                hasControls: false, // No controls/handles
+                hasBorders: false, // No default border
+                lockRotation: true,
+                evented: false // Don't capture events on the box itself
             });
             window.canvas.add(activeBoundingBox);
         }
@@ -880,29 +889,24 @@ function handleBoundingBoxMouseDown(options) {
         top: pointer.y,
         width: 0,
         height: 0,
-        fill: 'rgba(0, 0, 255, 0.2)',
+        fill: 'transparent', // No fill
         stroke: 'blue',
         strokeWidth: 2,
-        selectable: true,
-        hasControls: true,
-        hasBorders: true,
-        transparentCorners: false,
-        cornerColor: 'blue',
-        cornerSize: 10,
-        cornerStyle: 'circle',
-        // Enable all control points
-        lockMovementX: false,
-        lockMovementY: false,
-        lockRotation: true, // No rotation for bounding box
-        lockScalingX: false,
-        lockScalingY: false,
-        lockUniScaling: false
+        selectable: false, // Not selectable
+        hasControls: false, // No controls/handles
+        hasBorders: false, // No default border
+        lockRotation: true,
+        evented: false // Don't capture events on the box itself
     });
     window.canvas.add(currentBoundingBox);
     }
     // --- End Existing Logic --- //
-    }
-    
+
+    // Ensure default cursor is used
+    window.canvas.defaultCursor = 'default';
+    window.canvas.hoverCursor = 'default';
+}
+
 /**
  * Handle mouse move event for bounding box - Adds intermediate points to active event.
  * @param {Event} event - Fabric.js mouse event
@@ -918,6 +922,13 @@ function handleBoundingBoxMouseMove(options) {
         minY = Math.min(minY, pointer.y); maxY = Math.max(maxY, pointer.y);
         if (activeBoundingBox) {
             activeBoundingBox.set({ left: minX, top: minY, width: maxX - minX, height: maxY - minY });
+            // Re-apply style to ensure no controls appear if they were somehow re-enabled
+            activeBoundingBox.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: false,
+                evented: false
+            });
             window.canvas.renderAll();
         }
         currentCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
@@ -929,6 +940,13 @@ function handleBoundingBoxMouseMove(options) {
         if (width < 0) { left = pointer.x; width = Math.abs(width); }
         if (height < 0) { top = pointer.y; height = Math.abs(height); }
         currentBoundingBox.set({ left: left, top: top, width: width, height: height });
+        // Re-apply style to ensure no controls appear
+        currentBoundingBox.set({
+            selectable: false,
+            hasControls: false,
+            hasBorders: false,
+            evented: false
+        });
     window.canvas.renderAll();
         currentCoords = { left: left, top: top, width: width, height: height };
     } else {
@@ -979,7 +997,15 @@ function handleBoundingBoxMouseUp(options) {
         if (activeBoundingBox && (maxX - minX >= 5 && maxY - minY >= 5)) {
             finalCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
             activeBoundingBox.set(finalCoords); // Ensure final update
-            window.canvas.setActiveObject(activeBoundingBox);
+            // Re-apply style on finalization
+            activeBoundingBox.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: false,
+                evented: false
+            });
+            // Don't set active object as it's not selectable
+            // window.canvas.setActiveObject(activeBoundingBox);
         } else if (activeBoundingBox) {
             // Too small or invalid, remove visual
             window.canvas.remove(activeBoundingBox);
@@ -988,8 +1014,16 @@ function handleBoundingBoxMouseUp(options) {
     } else if (boundingbox_mode === 'corners' && currentBoundingBox) {
         if (currentBoundingBox.width >= 5 && currentBoundingBox.height >= 5) {
             finalCoords = { left: currentBoundingBox.left, top: currentBoundingBox.top, width: currentBoundingBox.width, height: currentBoundingBox.height };
+            // Re-apply style on finalization
+            currentBoundingBox.set({
+                selectable: false,
+                hasControls: false,
+                hasBorders: false,
+                evented: false
+            });
             activeBoundingBox = currentBoundingBox; // Keep the drawn box
-            window.canvas.setActiveObject(activeBoundingBox);
+            // Don't set active object as it's not selectable
+            // window.canvas.setActiveObject(activeBoundingBox);
         } else {
             window.canvas.remove(currentBoundingBox); // Too small
         }
@@ -1001,11 +1035,15 @@ function handleBoundingBoxMouseUp(options) {
     window.canvas.renderAll();
     // --- End Existing Logic --- //
 
-    // *** FINALIZE RECORDING EVENT ***
+    // Reset cursor to default if the tool is still active
+    if (boundingBoxActive) {
+        window.canvas.defaultCursor = 'default';
+        window.canvas.hoverCursor = 'default';
+    }
+
     finalizeBoundingBoxEvent(finalCoords);
-    // *** END FINALIZE RECORDING EVENT ***
-        }
-        
+}
+
 /**
  * Helper to finalize the active bounding box event.
  * @param {Object|null} finalCoords - The final coordinates, or null if box was invalid.

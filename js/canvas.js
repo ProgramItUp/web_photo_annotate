@@ -421,29 +421,29 @@ function setupCursorTrailTracking(canvas) {
     canvas.on('mouse:move', function(options) {
         const pointer = canvas.getPointer(options.e);
         
-        // Always track position for coordinates
-        checkAndLogMouseMovement(pointer);
-        
-        // Check if left button is pressed using options.e.buttons
-        const leftButtonPressed = options.e.buttons === 1;
-        
-        // Determine if laser pointer tool is the currently selected one
-        // This check should rely on the state managed by app.js or DrawingTools
-        // Example (replace with actual implementation): 
+        // Check if mouse button is down and trail is enabled
+        // *** MODIFICATION: Check if bounding box is NOT active ***
+        const isBBoxActive = window.DrawingTools && typeof window.DrawingTools.isInBoundingBoxMode === 'function' && window.DrawingTools.isInBoundingBoxMode();
+
+        // *** NEW: Add laser pointer point ***
+        // This should happen regardless of the visual trail setting, but only if laser tool is active
         const isLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
-
-        // Only add point to event if laser tool is active and mouse is down
-        if (isLaserToolActive && (isMouseDown || leftButtonPressed)) {
-            // *** NEW: Add point to laser event ***
-            if (typeof window.addLaserPointerPoint === 'function') {
-                window.addLaserPointerPoint(options);
-            }
+        if (isLaserToolActive && isMouseDown && typeof window.addLaserPointerPoint === 'function') {
+            window.addLaserPointerPoint(options);
         }
 
-        // Only update cursor trail visualization if mouse button is down and trail is generally enabled
-        if ((isMouseDown || leftButtonPressed) && window.cursorTrailEnabled) {
-            updateCursorTrail(pointer);
+        // Check if the visual trail should be shown
+        if (isMouseDown && window.cursorTrailEnabled && !isBBoxActive) {
+            updateCursorTrail(pointer); // Add point for visual trail
+            logMessage('Cursor trail point added', 'DEBUG');
         }
+        
+        // Update coordinate display always
+        updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
+        
+        // DEBUG: Log mouse move coordinates
+        // Temporarily disable verbose logging
+        // checkAndLogMouseMovement({x: pointer.x, y: pointer.y});
     });
     
     // Enable cursor trail when mouse button pressed
@@ -463,12 +463,24 @@ function setupCursorTrailTracking(canvas) {
             
             // Only enable trail visualization if the user has enabled it via the checkbox
             if (window.cursorTrailEnabled) {
-                showCursorTail = true;
-                window.showCursorTail = true;
-                updateCursorTrailStatus(true);
-                clearCursorTrail();
-                updateCursorTrail(pointer); // Render initial point
-                logMessage('Mouse down - cursor trail visualization activated', 'DEBUG');
+                // *** MODIFICATION: Check if bounding box is NOT active ***
+                const isBBoxActive = window.DrawingTools && typeof window.DrawingTools.isInBoundingBoxMode === 'function' && window.DrawingTools.isInBoundingBoxMode();
+
+                // Only show trail visually if BBox is not active
+                if (!isBBoxActive) {
+                    showCursorTail = true;
+                    window.showCursorTail = true;
+                    updateCursorTrailStatus(true);
+                    clearCursorTrail();
+                    updateCursorTrail(pointer); // Render initial point only if BBox not active
+                    logMessage('Mouse down - cursor trail visualization activated', 'DEBUG');
+                } else {
+                    showCursorTail = false; // Ensure trail is visually off if BBox is active
+                    window.showCursorTail = false;
+                    updateCursorTrailStatus(false, true); // Set status to READY (since checkbox is checked)
+                    clearCursorTrail(); // Ensure no residual dots
+                    logMessage('Mouse down - BBox active, cursor trail visualization suppressed', 'DEBUG');
+                }
             } else {
                 logMessage('Mouse down - cursor trail visualization disabled by user preference', 'DEBUG');
             }
