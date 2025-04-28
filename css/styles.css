@@ -131,7 +131,7 @@
     pointer-events: none;
     transform: translate(-50%, -50%);
     z-index: 1000;
-    transition: width 0.1s ease-out, height 0.1s ease-out, background-color 0.1s ease-out;
+    /* transition: width 0.1s ease-out, height 0.1s ease-out, background-color 0.1s ease-out; */ /* Temporarily removed */
     box-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
 }
 

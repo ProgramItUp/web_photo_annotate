@@ -1278,33 +1278,39 @@ async function processJsonAnnotationData(jsonContent) {
  */
 function processEmailAnnotationData(emailContent) {
      // TODO: Update this function if emails are expected to contain V2 JSON.
-     logMessage('Processing email file - ASSUMING V1 FORMAT. V2 format in email TBD.', 'WARN');
+     logMessage('Processing TXT file (Base64 encoded JSON)...', 'INFO'); // Updated log message
     try {
-         // Basic marker finding (assuming V1 markers for now)
-        const startMarker = 'Annotations start here --->';
-        const endMarker = '<--- Annotations end here';
+         // Basic marker finding
+         const startMarker = "Annotation data starts here ----->"; // Use double quotes for consistency
+         const endMarker = "<----- Annotation data ends here"; // Use double quotes
         let startIndex = emailContent.indexOf(startMarker);
         if (startIndex === -1) throw new Error('Could not find annotation start marker.');
             startIndex += startMarker.length;
         let endIndex = emailContent.indexOf(endMarker, startIndex);
-        if (endIndex === -1) endIndex = emailContent.length;
+        if (endIndex === -1) endIndex = emailContent.length; // If end marker is missing, read to end
 
         const base64Data = emailContent.substring(startIndex, endIndex).trim();
         if (!base64Data) throw new Error('No annotation data found between markers');
 
-        // Decode the base64 data (Assuming window.decodeAnnotationData decodes V1)
-        if (typeof window.decodeAnnotationData !== 'function') {
-            throw new Error('decodeAnnotationData function not found.');
+        // Decode the Base64 data to get the original JSON string
+        let decodedJsonString;
+        try {
+            decodedJsonString = atob(base64Data);
+            logMessage('Base64 data successfully decoded.', 'DEBUG');
+        } catch (decodeError) {
+            console.error('Error decoding Base64 data:', decodeError);
+            throw new Error(`Failed to decode Base64 data: ${decodeError.message}`);
         }
-        const decodedV1Data = window.decodeAnnotationData(base64Data); // This should return V1 structure
 
-        // Attempt to process the decoded V1 data using the JSON processor
-         processJsonAnnotationData(JSON.stringify(decodedV1Data));
+        // Process the decoded JSON string using the standard JSON processor
+        // The processJsonAnnotationData function handles both V1 and V2 structure internally
+        processJsonAnnotationData(decodedJsonString);
 
     } catch (error) {
-        console.error('Error processing email data:', error);
-        logMessage('Error processing email data: ' + error.message, 'ERROR');
-         alert('Failed to process annotation data from email. It might be corrupted or in an old format.');
+        console.error('Error processing encoded TXT data:', error);
+        logMessage('Error processing encoded TXT data: ' + error.message, 'ERROR');
+         alert('Failed to process annotation data from TXT file. It might be corrupted or missing markers. Check console for details.'); // Updated alert message
+         // Reset state on error
          window.recordedEvents = {};
         audioBlob = null;
         window.loadedAnnotationData = null;
@@ -1731,7 +1737,22 @@ async function replayAnnotation() {
                                          cursorNeedsUpdateFromEvent = true;
                                      } else { logMessage('Bounding box replay functions not found!', 'ERROR'); }
                                 }
+                                // <<< ADD: Hide cursor during BBox manipulation >>>
+                                if (window.DrawingTools?.hideReplayCursor) {
+                                    logMessage('   Hiding replay cursor during bounding box event.', 'DEBUG');
+                                    window.DrawingTools.hideReplayCursor(false);
+                                }
+                                // <<< END ADDITION >>>
                                 break;
+                            // <<< ADDED CASE for audio_recording >>>
+                            case 'audio_recording':
+                                // This event type marks audio start/stop points in the timeline.
+                                // Audio playback itself is handled by the <audio> element.
+                                // We just acknowledge the event here to avoid the 'Unknown category' warning.
+                                const action = (event.end_time_offset === null) ? 'start' : 'stop';
+                                logMessage(`Replay V2: Acknowledging audio_recording ${action} event at ${event.replay_time.toFixed(0)}ms`, 'TRACE');
+                                break;
+                            // <<< END ADDED CASE >>>
                             default:
                                 logMessage(`Replay V2: Unknown event category: ${event.category}`, 'WARN');
                         }
@@ -1853,6 +1874,31 @@ async function replayAnnotation() {
                 } else if (!finalCoords && !window.DrawingTools?.removeReplayBoundingBox) {
                      logMessage('removeReplayBoundingBox not found for invalid final box!', 'ERROR');
                 }
+
+                // <<< ADD: Show cursor again after BBox manipulation ends >>>
+                const cursor = document.getElementById('replay-cursor');
+                 if (cursor) {
+                     // Ensure cursor position is updated to the final box position
+                     if (finalCoords) {
+                         // Update state first
+                         lastCursorPos = { x: finalCoords.left, y: finalCoords.top };
+                         logMessage(`   About to apply styles: X=${lastCursorPos.x.toFixed(0)}, Y=${lastCursorPos.y.toFixed(0)}`, 'TRACE');
+                         // Apply position styles *before* making it visible
+                         cursor.style.left = `${lastCursorPos.x}px`;
+                         cursor.style.top = `${lastCursorPos.y}px`;
+                         cursor.style.display = 'block'; // Make visible at the correct position
+                         logMessage(`   Styles applied: left=${cursor.style.left}, top=${cursor.style.top}, display=${cursor.style.display}`, 'TRACE');
+                         logMessage(`   Showing replay cursor at final BBox pos (${lastCursorPos.x.toFixed(0)}, ${lastCursorPos.y.toFixed(0)})`, 'DEBUG');
+                     } else {
+                         // Keep cursor hidden if the event ended badly
+                         logMessage('   Keeping replay cursor hidden as BBox event ended with invalid finalCoords.', 'WARN');
+                         cursor.style.display = 'none';
+                     }
+                 } else {
+                     logMessage('   Could not find replay cursor element to show/hide after BBox event.', 'WARN');
+                 }
+                 // <<< END ADDITION >>>
+
                 activeBBoxEventDetails = null; // Mark as inactive
                 activeBBoxPoints = null;
                 currentBBoxPointIndex = 0;
@@ -2242,7 +2288,7 @@ function updateCoordinatesDisplay(x, y) {
  * @param {string} senderName - Sender name
  * @param {HTMLElement} notification - Notification element to remove when done
  */
-function prepareEmailData(emailAddress, senderName, notification) {
+async function prepareEmailData(emailAddress, senderName, notification) {
     // Add visual feedback to the email button
     const emailBtn = document.getElementById('email-btn');
     if (emailBtn) {
@@ -2250,166 +2296,145 @@ function prepareEmailData(emailAddress, senderName, notification) {
         emailBtn.disabled = true;
     }
     
-    logMessage('Email button clicked - preparing email data...', 'INFO');
+    logMessage('Email button clicked - preparing V2 JSON data...', 'INFO');
     
-    if (!emailAddress) {
-        // Use a default fallback address
-        emailAddress = 'user@example.com';
-        logMessage('Using default email address', 'WARN');
-    }
-    
-    // Default sender name if not provided
-    senderName = senderName || 'Me';
-    const senderEmail = 'me@me.com'; // Placeholder email
-    
-    logMessage(`Preparing email data for ${emailAddress} from ${senderName}...`, 'INFO');
-    
-    // Create annotation data object similar to when saving
-    const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 16);
-        const annotationData = {
-        timestamp: timestamp,
-        image: {
-            dataUrl: null,
-            width: 0,
-            height: 0
-        },
-        audio: {
-            dataUrl: null,
-            duration: 0
-        },
-            mouseData: window.recordedEvents.audio_recording || [],
-        annotations: []
-    };
-    
-    // Get image data, audio data, and annotations
-    getImageDataFromCanvas()
-        .then(imageData => {
-            annotationData.image = imageData;
-            logMessage('Image data captured for email', 'DEBUG');
-            return getAudioData();
-        })
-        .then(audioData => {
-            annotationData.audio = audioData;
-            logMessage('Audio data captured for email', 'DEBUG');
-            return getAnnotationsFromCanvas();
-        })
-        .then(annotations => {
-            annotationData.annotations = annotations;
-            logMessage('Annotation data captured for email', 'DEBUG');
-            
-            try {
-                // Convert the JSON to base64 using our utility function
-                const base64Data = window.encodeAnnotationData(annotationData);
-                
-                // Format the email body according to the specification
-                const emailBody = `
-To: ${emailAddress}
-From: ${senderName} <${senderEmail}>
-Subject: Annotations from ${timestamp}
-
-This annotation was created on ${new Date().toLocaleString()} by ${senderName}
-Annotations start here --->
-${base64Data}
-<--- Annotations end here
-`;
-                
-                // Log a shortened version of what we're sending
-                const previewLength = 50;
-                const base64Preview = base64Data.length > previewLength ? 
-                    base64Data.substring(0, previewLength) + '...' : 
-                    base64Data;
-                
-                logMessage(`Email content prepared with ${base64Data.length} characters of base64 data`, 'INFO');
-                logMessage(`Base64 data preview: ${base64Preview}`, 'DEBUG');
-                
-                // Remove the notification
-                if (notification && notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-                
-                // Show a dialog with copy options instead of trying to open an email client
-                showEmailDataDialog(emailBody, emailAddress, base64Data);
-                
-                // Reset UI elements
-                resetEmailButton();
-                
-    } catch (error) {
-                console.error('Error encoding data for email:', error);
-                logMessage('Error encoding data for email: ' + error.message, 'ERROR');
-                resetEmailButton();
-                if (notification && notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error preparing email data:', error);
-            logMessage('Error preparing email data: ' + error.message, 'ERROR');
+    // --- V2 Data Preparation --- //
+    try {
+        if (!audioBlob && Object.values(window.recordedEvents || {}).every(arr => !Array.isArray(arr) || arr.length === 0)) {
+            logMessage('No annotation data available to prepare for email.', 'WARN');
+            alert('No annotation data recorded yet.');
             resetEmailButton();
-            if (notification && notification.parentNode) {
-                notification.parentNode.removeChild(notification);
+            if (notification && notification.parentNode) notification.parentNode.removeChild(notification);
+            return;
+        }
+
+        // Get necessary metadata (similar to saveAnnotationData)
+        const totalDuration = getCurrentRecordingTime();
+        const recordingTimestamp = recordingStartTime ? new Date(recordingStartTime).toISOString() : new Date().toISOString();
+        const imageInfo = {
+            url: document.getElementById('url-image')?.value || null,
+            width: window.canvas?.width || null,
+            height: window.canvas?.height || null
+        };
+
+        // Convert audio blob to Base64
+        let audioBlobBase64 = null;
+        if (audioBlob) {
+            try {
+                audioBlobBase64 = await blobToBase64(audioBlob);
+                logMessage('Audio blob successfully converted to Base64 for email data', 'DEBUG');
+            } catch (error) {
+                console.error('Error converting audio blob to Base64 for email:', error);
+                logMessage('Error converting audio blob for email. Proceeding without audio.', 'WARN');
             }
-        });
+        } else {
+            logMessage('No audio blob found for email data.', 'INFO');
+        }
+
+        // Structure the V2 JSON data
+        const annotationDataV2 = {
+            Events: window.recordedEvents || {},
+            version: "2.0",
+            recordingStartTime: recordingTimestamp,
+            totalDuration: totalDuration,
+            imageInfo: imageInfo,
+            audioBlobBase64: audioBlobBase64
+        };
+
+        // Stringify the V2 data
+        const jsonData = JSON.stringify(annotationDataV2, null, 2);
+
+        logMessage(`V2 JSON data prepared (${jsonData.length} characters)`, 'INFO');
+
+        // Remove the initial notification
+        if (notification && notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+
+        // Show the dialog with the V2 JSON data
+        showEmailDataDialog(jsonData); // Pass only the JSON data string
+
+        // Reset UI elements (dialog handles its own closing)
+        resetEmailButton();
+
+    } catch (error) {
+        console.error('Error preparing V2 JSON data:', error);
+        logMessage('Error preparing V2 JSON data: ' + error.message, 'ERROR');
+        alert('An error occurred while preparing the annotation data. See console for details.');
+        resetEmailButton();
+        if (notification && notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }
 }
 
 /**
  * Display a dialog with email data and copy options
- * @param {string} emailBody - The full email content
- * @param {string} emailAddress - The target email address
- * @param {string} base64Data - Just the base64 encoded data
+ * @param {string} jsonData - The V2 annotation data as a JSON string
  */
-function showEmailDataDialog(emailBody, emailAddress, base64Data) {
+function showEmailDataDialog(jsonData) {
     // Create modal container
     const modalContainer = document.createElement('div');
     modalContainer.className = 'modal fade';
-    modalContainer.id = 'emailDataModal';
+    modalContainer.id = 'emailDataModal'; // Keep same ID for bootstrap
     modalContainer.tabIndex = -1;
     modalContainer.setAttribute('role', 'dialog');
     modalContainer.setAttribute('aria-labelledby', 'emailDataModalLabel');
     modalContainer.setAttribute('aria-hidden', 'true');
     
-    // Create modal structure
+    // Create modal structure (updated for JSON)
     modalContainer.innerHTML = `
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="emailDataModalLabel">Email Data Ready</h5>
+                <h5 class="modal-title" id="emailDataModalLabel">Annotation JSON Data Ready</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-info mb-3">
-                    <h6>Your annotation data is ready!</h6>
-                    <p>Choose one of the options below to share your data:</p>
+                    <h6>Your annotation JSON data is ready!</h6>
+                    <p>Choose an option to save or copy the data:</p>
                 </div>
                 
-                <div class="row mb-3">
-                    <div class="col-md-6">
+                <div class="row gy-3"> <!-- Use gy-3 for vertical spacing -->
+                    <div class="col-12"> <!-- Full width column -->
                         <div class="card">
                             <div class="card-header bg-primary text-white">
-                                <h6 class="mb-0">Option 1: Save as File</h6>
+                                <h6 class="mb-0">Option 1: Save as JSON File</h6>
                             </div>
                             <div class="card-body">
-                                <p>Save the annotation data as a file to attach to an email later.</p>
-                                <button id="saveEmailDataBtn" class="btn btn-primary">Save Data File</button>
+                                <p>Save the complete annotation data as a standard <code>.json</code> file. (Recommended)</p>
+                                <button id="saveJsonDataBtn" class="btn btn-primary">Save JSON File</button>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-12"> <!-- Full width column -->
                         <div class="card">
                             <div class="card-header bg-success text-white">
-                                <h6 class="mb-0">Option 2: Copy to Clipboard</h6>
+                                <h6 class="mb-0">Option 2: Copy JSON to Clipboard</h6>
                             </div>
                             <div class="card-body">
-                                <p>Copy the complete email text to paste into your email client.</p>
-                                <button id="copyEmailBtn" class="btn btn-success">Copy Email Text</button>
+                                <p>Copy the complete JSON data string to your clipboard.</p>
+                                <button id="copyJsonBtn" class="btn btn-success">Copy JSON Data</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12"> <!-- Full width column for Option 3 -->
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">
+                                <h6 class="mb-0">Option 3: Save as Encoded Text File</h6>
+                            </div>
+                            <div class="card-body">
+                                <p>Save the data encoded in Base64 within a <code>.txt</code> file, including header/footer markers.</p>
+                                <button id="saveEncodedTxtBtn" class="btn btn-secondary">Save Encoded TXT File</button>
                             </div>
                         </div>
                     </div>
                 </div>
                 
                 <div class="mb-3">
-                    <label for="emailPreview" class="form-label">Email Preview (first 200 characters):</label>
-                    <textarea id="emailPreview" class="form-control font-monospace" rows="5" readonly></textarea>
+                    <label for="jsonPreview" class="form-label">JSON Data Preview (first 500 characters):</label>
+                    <textarea id="jsonPreview" class="form-control font-monospace" rows="8" readonly></textarea>
                 </div>
             </div>
             <div class="modal-footer">
@@ -2423,47 +2448,109 @@ function showEmailDataDialog(emailBody, emailAddress, base64Data) {
     document.body.appendChild(modalContainer);
     
     // Set the preview text
-    const previewLength = 200;
-    const emailPreview = emailBody.length > previewLength ? 
-        emailBody.substring(0, previewLength) + '...' : emailBody;
+    const previewLength = 500; // Show more for JSON
+    const jsonPreviewText = jsonData.length > previewLength ? 
+        jsonData.substring(0, previewLength) + '...\n(Full data too long for preview)' : jsonData;
     
     // Wait for the modal to be fully added to DOM
-        setTimeout(() => {
+    setTimeout(() => {
         // Get references to elements
-        const previewTextarea = document.getElementById('emailPreview');
-        const saveButton = document.getElementById('saveEmailDataBtn');
-        const copyButton = document.getElementById('copyEmailBtn');
-        
+        const previewTextarea = document.getElementById('jsonPreview');
+        const saveButton = document.getElementById('saveJsonDataBtn');
+        const copyButton = document.getElementById('copyJsonBtn');
+        const saveEncodedButton = document.getElementById('saveEncodedTxtBtn'); // Get new button
+        const modalElement = document.getElementById('emailDataModal');
+        let modalInstance = null;
+        if (modalElement && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+             modalInstance = bootstrap.Modal.getInstance(modalElement); // Get instance later
+             if (!modalInstance) {
+                  // Create instance if it doesn't exist when needed
+             }
+        }
+
         // Set preview text
         if (previewTextarea) {
-            previewTextarea.value = emailPreview;
+            previewTextarea.value = jsonPreviewText;
         }
         
-        // Add save button handler
+        // Add save button handler (save as JSON)
         if (saveButton) {
             saveButton.addEventListener('click', () => {
-                const blob = new Blob([emailBody], { type: 'text/plain' });
-                const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 16);
-                const filename = `annotation-email-${timestamp}.txt`;
-                downloadFile(blob, filename);
-                logMessage(`Email content saved as ${filename}`, 'INFO');
+                const blob = new Blob([jsonData], { type: 'application/json' });
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const filename = `annotation-data-${timestamp}.json`;
+                try {
+                    saveAs(blob, filename);
+                    logMessage(`Annotation JSON data saved as ${filename}`, 'INFO');
+                    // Auto-close on success
+                    if (!modalInstance) modalInstance = bootstrap.Modal.getInstance(modalElement);
+                    if(modalInstance) modalInstance.hide(); 
+                } catch (error) {
+                     console.error('Error using saveAs for JSON:', error);
+                     logMessage('Error saving JSON file. Ensure FileSaver.js is included.', 'ERROR');
+                     alert('Could not save JSON file automatically. Ensure FileSaver.js is loaded.');
+                }
             });
         }
         
-        // Add copy button handler
+        // Add copy button handler (copy JSON string)
         if (copyButton) {
-            copyButton.addEventListener('click', () => {
-                copyToClipboard(emailBody);
+            copyButton.addEventListener('click', async () => { // Make async for await
+                 try {
+                     await copyToClipboard(jsonData); // Assume copyToClipboard is adapted to return promise
+                    // Auto-close on success
+                     if (!modalInstance) modalInstance = bootstrap.Modal.getInstance(modalElement);
+                     if(modalInstance) modalInstance.hide();
+                 } catch (err) {
+                     // Error already handled in copyToClipboard (alert)
+                 }
+            });
+        }
+
+        // Add save encoded text button handler
+        if (saveEncodedButton) {
+            saveEncodedButton.addEventListener('click', () => {
+                try {
+                    const base64Data = btoa(jsonData); // Encode JSON to Base64
+                    const header = "Annotation data starts here ----->\n";
+                    const footer = "\n<----- Annotation data ends here";
+                    const fullTextContent = header + base64Data + footer;
+
+                    const blob = new Blob([fullTextContent], { type: 'text/plain' });
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                    const filename = `annotation-encoded-${timestamp}.txt`;
+
+                    saveAs(blob, filename);
+                    logMessage(`Annotation data saved as encoded TXT: ${filename}`, 'INFO');
+                    // Auto-close on success
+                     if (!modalInstance) modalInstance = bootstrap.Modal.getInstance(modalElement);
+                     if(modalInstance) modalInstance.hide();
+                } catch (error) {
+                    console.error('Error encoding/saving Base64 TXT:', error);
+                    logMessage('Error encoding/saving Base64 TXT: ' + error.message, 'ERROR');
+                    alert('Could not save encoded TXT file. See console for details.');
+                }
             });
         }
         
         // Show the modal
-        const modal = new bootstrap.Modal(document.getElementById('emailDataModal'));
-        modal.show();
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            if (modalElement && !modalInstance) { // Create instance only if needed
+                 modalInstance = new bootstrap.Modal(modalElement);
+                 modalInstance.show();
+                 logMessage('JSON data ready - showing options dialog', 'INFO');
+            } else if (modalInstance) {
+                 modalInstance.show(); // Show if already exists
+                 logMessage('JSON data ready - showing options dialog', 'INFO');
+            } else {
+                logMessage('Modal element #emailDataModal not found', 'ERROR');
+            }
+        } else {
+             logMessage('Bootstrap Modal component not found.', 'ERROR');
+             alert('Could not display the data dialog. Bootstrap might not be loaded correctly.');
+        }
         
-        // Log success
-        logMessage('Email data ready - showing options dialog', 'INFO');
-        }, 100);
+    }, 100);
 }
 
 /**
@@ -2677,8 +2764,10 @@ function clearLaserTrail() {
     const trailContainer = document.getElementById('laser-trail-container');
     if (trailContainer) {
         trailContainer.innerHTML = '';
+        logMessage('Laser trail container cleared.', 'TRACE'); // More specific log
     } else {
-        logMessage('Warning: Laser trail container not found for clearing', 'WARN');
+        // It's okay if the container doesn't exist (e.g., before first use or after cleanup)
+        logMessage('Laser trail container not found for clearing (this is often expected).', 'DEBUG'); // Downgraded from WARN
     }
     
     window.currentLaserTrail = null;

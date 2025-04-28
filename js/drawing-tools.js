@@ -241,8 +241,6 @@ function createReplayCursor() {
         cursor.style.height = `${cursorSize}px`;
     }
     
-    // Show the cursor
-    cursor.style.display = 'block';
     console.log('DEBUG: createReplayCursor function defined');
     return cursor;
 }
