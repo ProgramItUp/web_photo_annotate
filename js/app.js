@@ -400,6 +400,31 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         logMessage('Could not find Pointer or Draw mode buttons', 'WARN');
     }
+
+    // --- NEW: Zoom Controls --- 
+    const zoomNaturalBtn = document.getElementById('zoom-natural-btn');
+    if (zoomNaturalBtn) {
+        zoomNaturalBtn.addEventListener('click', () => {
+            if (typeof window.resizeCanvas === 'function') {
+                logMessage('Resetting zoom to Natural Size 1:1', 'INFO');
+                window.resizeCanvas(); 
+            } else {
+                logMessage('Error: resizeCanvas function not found.', 'ERROR');
+            }
+        });
+    }
+
+    const zoomMaxDimBtn = document.getElementById('zoom-max-dim-btn');
+    if (zoomMaxDimBtn) {
+        zoomMaxDimBtn.addEventListener('click', () => {
+            if (typeof window.resizeCanvasToFit === 'function') {
+                logMessage('Resizing image to fit max dimensions 1400x1400', 'INFO');
+                window.resizeCanvasToFit(1400, 1400);
+            } else {
+                logMessage('Error: resizeCanvasToFit function not found.', 'ERROR');
+            }
+        });
+    }
 });
 
 /**

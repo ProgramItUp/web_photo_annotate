@@ -5,7 +5,8 @@
 // State variables
 let brightnessValue = 0;
 let contrastValue = 0;
-const DEFAULT_IMAGE_PATH = 'https://prod-images-static.radiopaedia.org/images/157210/332aa0c67cb2e035e372c7cb3ceca2_big_gallery.jpg';
+// const DEFAULT_IMAGE_PATH = 'https://prod-images-static.radiopaedia.org/images/157210/332aa0c67cb2e035e372c7cb3ceca2_big_gallery.jpg';
+const DEFAULT_IMAGE_PATH = 'https://raw.githubusercontent.com/ProgramItUp/web_photo_annotate/refs/heads/master/calibration_image_1400x1400.png';
 
 console.log('image-tools.js loaded - DEFAULT_IMAGE_PATH:', DEFAULT_IMAGE_PATH);
 

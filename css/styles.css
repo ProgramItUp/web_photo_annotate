@@ -1,23 +1,11 @@
-/* Canvas and container styles */
-.canvas-container {
-    position: relative;
-    margin: 0px 0;
-    border: 1px solid #ccc;
-    overflow: hidden;
-}
+/* ==========================================================================
+   Base & Layout Styles
+   ========================================================================== */
+/* (No specific base styles defined here yet) */
 
-#image-container {
-    min-height: 400px;
-    background-color: #f8f9fa;
-}
-
-/* Tool selection styles */
-.tool-selected {
-    background-color: #0d6efd !important;
-    color: white !important;
-}
-
-/* Controls panel styles */
+/* ==========================================================================
+   Controls Panel
+   ========================================================================== */
 .controls-panel {
     padding: 10px;
     background-color: #f8f9fa;
@@ -34,151 +22,36 @@
     padding-bottom: 5px;
 }
 
+/* Custom form control sizes within panels */
+.form-control-sm {
+    font-size: 0.875rem;
+}
+
+/* Styles for vertical button groups often used in panels */
 .btn-group-vertical .btn {
     margin-bottom: 2px;
     text-align: left;
 }
 
-/* Coordinates display */
-.coordinates-display {
-    font-family: monospace;
-    padding: 5px 8px;
-    background-color: #f1f1f1;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    font-weight: bold;
-    border: 1px solid #ddd;
-    color: #333;
-}
-
-/* Recording indicator styles */
-.recording-indicator {
-    color: red;
-    font-weight: bold;
-    display: none;
-    font-size: 0.8rem;
-}
-
-/* Audio volume meter */
-.audio-volume-meter {
-    width: 100%;
-    height: 16px;
-    background-color: #f1f1f1;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-top: 8px;
-    display: none;
-}
-
-.volume-level {
-    height: 100%;
-    background-color: #28a745;
-    width: 0%;
-    transition: width 0.1s ease-in-out;
-}
-
-/* Custom form control sizes */
-.form-control-sm {
-    font-size: 0.875rem;
-}
-
-/* Utility classes */
-.small-text {
-    font-size: 0.8rem;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .controls-panel {
-        padding: 8px;
-        margin-bottom: 8px;
-    }
-    
-    .btn-group-vertical .btn {
-        font-size: 0.75rem;
-    }
-    
-    h6 {
-        font-size: 0.9rem;
-    }
-}
-
-/* Cursor trail status indicators */
-.status-active {
-    background-color: #198754 !important; /* Green background for active status */
-    font-weight: bold;
-}
-
-.status-inactive {
-    background-color: #6c757d !important; /* Gray background for inactive status */
-}
-
-/* Cursor trail toggle styles */
-.cursor-trail-controls {
+/* Styles for inline button groups (like Bounding Box modes) */
+.d-flex {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-/* Replay cursor styles */
-.replay-cursor {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: rgba(255, 0, 0, 0.5);
-    border: 2px solid red;
-    pointer-events: none;
-    transform: translate(-50%, -50%);
-    z-index: 1000;
-    /* transition: width 0.1s ease-out, height 0.1s ease-out, background-color 0.1s ease-out; */ /* Temporarily removed */
-    box-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
-}
-
-/* Laser pointer trail styles */
-#laser-trail-container {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 999;
+    gap: 8px;
+    align-items: stretch;
 }
 
-.laser-trail-point {
-    position: absolute;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    box-shadow: 0 0 4px rgba(255, 0, 0, 0.5);
+.d-flex > .btn-group-sm {
+    width: auto;
+    flex: 0 0 auto;
 }
 
-/* Laser pointer effect styling */
-.laser-active {
-    cursor: none;
+.d-flex .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
 }
 
-/* Bounding box styles */
-.bounding-box {
-    border: 2px solid blue;
-    background-color: rgba(0, 0, 255, 0.2);
-    position: absolute;
-    pointer-events: all;
-}
-
-/* Bounding box handles */
-.bounding-box-handle {
-    width: 10px;
-    height: 10px;
-    background-color: blue;
-    border: 1px solid white;
-    border-radius: 50%;
-    position: absolute;
-    cursor: pointer;
-}
-
-/* Mode buttons */
 .btn-group-sm {
     display: flex;
     width: auto;
@@ -190,63 +63,18 @@
     font-size: 0.875rem;
 }
 
-/* Bounding box inline button layout */
-.d-flex {
-    display: flex;
-    width: 100%;
-    gap: 8px;
-    align-items: stretch;
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+/* Style for the currently selected tool button */
+.tool-selected {
+    background-color: #0d6efd !important;
+    color: white !important;
 }
 
-#tool-bounding-box {
-    flex-grow: 1;
-    display: block !important;
-    width: auto;
-    text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.d-flex > .btn-group-sm {
-    width: auto;
-    flex: 0 0 auto;
-}
-
-/* Ensure consistent button sizes */
-.d-flex .btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
-}
-
-/* Show the box tool when we have the bounding box feature */
-#tool-bounding-box {
-    display: block !important;
-}
-
-/* Hide specific drawing tools but keep them in the DOM */
-#tool-dot, #tool-box, #tool-circle, #tool-squiggle, 
-#tool-arrow, #tool-select, #delete-selected {
-    display: none;
-}
-
-/* Hide the entire div containing the cursor trail toggle */
-.mb-2:has(#cursor-tail-toggle),
-.mb-2 label.form-check-label.small,
-#cursor-tail-toggle,
-#cursor-trail-status {
-    display: none !important;
-}
-
-/* Hide the informational text about cursor trail */
-.alert.alert-info.p-1.m-0.small {
-    display: none !important;
-}
-
-/* Add styles for button processing state */
+/* Style for buttons during processing (e.g., saving) */
 .btn-processing {
-    background-color: #6c757d !important; 
+    background-color: #6c757d !important;
     color: white !important;
     cursor: wait !important;
     position: relative;
@@ -269,4 +97,223 @@
     0% { opacity: 0; }
     50% { opacity: 1; }
     100% { opacity: 0; }
-} 
+}
+
+/* ==========================================================================
+   Canvas & Image Area
+   ========================================================================== */
+.canvas-container {
+    position: relative;
+    margin: 0px 0;
+    border: 1px solid #ccc;
+    overflow: hidden;
+}
+
+#image-container { /* Often used as the main container for the canvas */
+    min-height: 400px;
+    background-color: #f8f9fa;
+}
+
+.coordinates-display {
+    font-family: monospace;
+    padding: 5px 8px;
+    background-color: #f1f1f1;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    border: 1px solid #ddd;
+    color: #333;
+}
+
+/* ==========================================================================
+   Indicators & Meters
+   ========================================================================== */
+.recording-indicator {
+    color: red;
+    font-weight: bold;
+    display: none; /* Initially hidden */
+    font-size: 0.8rem;
+}
+
+.audio-volume-meter {
+    width: 100%;
+    height: 16px;
+    background-color: #f1f1f1;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 8px;
+    display: none; /* Initially hidden */
+}
+
+.volume-level {
+    height: 100%;
+    background-color: #28a745;
+    width: 0%;
+    transition: width 0.1s ease-in-out;
+}
+
+/* Cursor trail related status indicators/controls */
+/* Note: These are currently hidden via display: none below */
+.status-active {
+    background-color: #198754 !important;
+    font-weight: bold;
+}
+
+.status-inactive {
+    background-color: #6c757d !important;
+}
+
+.cursor-trail-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* ==========================================================================
+   Tool-Specific Styles (Laser, Bounding Box, Cursors etc.)
+   ========================================================================== */
+
+/* Replay cursor style */
+.replay-cursor {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: rgba(255, 0, 0, 0.5);
+    border: 2px solid red;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
+}
+
+/* Laser pointer trail styles */
+#laser-trail-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 999;
+}
+
+.laser-trail-point {
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(255, 0, 0, 0.5);
+}
+
+/* Hide default cursor when laser is active */
+.laser-active {
+    cursor: none;
+}
+
+/* Bounding box drawing styles */
+.bounding-box {
+    border: 2px solid blue;
+    background-color: rgba(0, 0, 255, 0.2);
+    position: absolute;
+    pointer-events: all; /* Allow interaction */
+}
+
+/* Bounding box resize handles */
+.bounding-box-handle {
+    width: 10px;
+    height: 10px;
+    background-color: blue;
+    border: 1px solid white;
+    border-radius: 50%;
+    position: absolute;
+    cursor: pointer;
+}
+
+/* Specific style adjustments for bounding box button layout */
+#tool-bounding-box { /* Using ID here as it's likely targeted by JS */
+    flex-grow: 1;
+    display: block !important; /* Ensure visible */
+    width: auto;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ==========================================================================
+   Log Area
+   ========================================================================== */
+#log-area {
+    font-family: monospace;
+    font-size: 0.8rem;
+    /* readonly attribute is handled in HTML */
+}
+/* Add styles for log card header/buttons if needed later */
+
+
+/* ==========================================================================
+   Hidden Elements (Currently unused/disabled features)
+   ========================================================================== */
+
+/* Hide specific drawing tools but keep them in the DOM */
+/* Consider removing from HTML if permanently unused */
+#tool-dot, #tool-box, #tool-circle, #tool-squiggle,
+#tool-arrow, #tool-select, #delete-selected {
+    display: none;
+}
+
+/* Hide the entire div containing the cursor trail toggle */
+/* Uses :has() pseudo-class; ensure browser compatibility if needed */
+.mb-2:has(#cursor-tail-toggle),
+.mb-2 label.form-check-label.small,
+#cursor-tail-toggle,
+#cursor-trail-status { /* Hiding the status badge too */
+    display: none !important; /* Using !important to override potential Bootstrap display styles */
+}
+
+/* Hide the informational text about cursor trail */
+.alert.alert-info.p-1.m-0.small {
+    display: none !important; /* Using !important */
+}
+
+
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+.small-text {
+    font-size: 0.8rem;
+}
+/* Add other general utility classes here */
+/* .is-hidden { display: none; } example */
+
+
+/* ==========================================================================
+   Responsive Adjustments
+   ========================================================================== */
+@media (max-width: 768px) {
+    .controls-panel {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+
+    .btn-group-vertical .btn {
+        font-size: 0.75rem;
+    }
+
+    /* Adjust heading size on smaller screens if needed */
+    /* Example: */
+    /* .controls-panel h6 {
+        font-size: 0.9rem;
+    } */
+
+    /* Currently, the h6 rule for responsive is global, let's make it specific */
+    .controls-panel h6 {
+         font-size: 0.9rem; /* Apply only within controls panel */
+    }
+     /* Remove the generic h6 rule from here if it exists */
+}
+/* Remove any duplicate or now redundant rules outside the media query */
+/* Example: The original h6 rule outside the media query might be redundant now */
+/* Check if any rules were left outside sections */ 

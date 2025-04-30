@@ -152,6 +152,64 @@ window.fabric = fabric;
         }
     };
     
+    // NEW: Resize canvas to fit image within max dimensions
+    window.resizeCanvasToFit = function(maxWidth, maxHeight) {
+        console.log(`Global resizeCanvasToFit called with max dimensions: ${maxWidth}x${maxHeight}`);
+
+        if (!window.canvas) {
+            console.error('Canvas not initialized yet');
+            return;
+        }
+
+        const canvas = window.canvas;
+        const objects = canvas.getObjects();
+        const imgObject = objects.find(obj => obj.type === 'image');
+
+        if (!imgObject) {
+            if (typeof logMessage === 'function') {
+                logMessage('No image loaded to resize.', 'WARN');
+            }
+            // Optionally resize the empty canvas to defaults or container size?
+            // For now, do nothing if no image.
+            return;
+        }
+
+        const naturalWidth = imgObject.width;
+        const naturalHeight = imgObject.height;
+
+        if (naturalWidth <= 0 || naturalHeight <= 0) {
+            logMessage('Image has invalid natural dimensions.', 'WARN');
+            return;
+        }
+
+        // Calculate scale factor
+        const widthScale = maxWidth / naturalWidth;
+        const heightScale = maxHeight / naturalHeight;
+        const scaleFactor = Math.min(widthScale, heightScale); // Ensure it fits within BOTH dimensions
+
+        const targetWidth = naturalWidth * scaleFactor;
+        const targetHeight = naturalHeight * scaleFactor;
+
+        logMessage(`Resizing canvas to fit image within ${maxWidth}x${maxHeight}. Target: ${targetWidth.toFixed(0)}x${targetHeight.toFixed(0)}, Scale: ${scaleFactor.toFixed(3)}`);
+
+        // Update canvas dimensions
+        canvas.setWidth(targetWidth);
+        canvas.setHeight(targetHeight);
+
+        // Set image scale and position
+        imgObject.set({
+            scaleX: scaleFactor,
+            scaleY: scaleFactor,
+            left: 0,
+            top: 0,
+            originX: 'left',
+            originY: 'top'
+        });
+
+        // Redraw the canvas
+        canvas.renderAll();
+    };
+    
     // Re-implementing cursor trail update function
     window.updateCursorTrail = function(pointer) {
         if (!showCursorTail) return;
