@@ -414,12 +414,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Constants for Max Zoom Dimensions
+    const MAX_ZOOM_WIDTH = 1600;
+    const MAX_ZOOM_HEIGHT = 1100;
+
     const zoomMaxDimBtn = document.getElementById('zoom-max-dim-btn');
     if (zoomMaxDimBtn) {
         zoomMaxDimBtn.addEventListener('click', () => {
             if (typeof window.resizeCanvasToFit === 'function') {
-                logMessage('Resizing image to fit max dimensions 1400x1400', 'INFO');
-                window.resizeCanvasToFit(1400, 1400);
+                logMessage(`Resizing image to fit max dimensions ${MAX_ZOOM_WIDTH}x${MAX_ZOOM_HEIGHT}`, 'INFO');
+                window.resizeCanvasToFit(MAX_ZOOM_WIDTH, MAX_ZOOM_HEIGHT);
             } else {
                 logMessage('Error: resizeCanvasToFit function not found.', 'ERROR');
             }

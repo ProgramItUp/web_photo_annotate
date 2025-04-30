@@ -1206,16 +1206,17 @@ function debugBoundingBoxReplay() {
 /**
  * Starts recording a new laser pointer event.
  * Called on mouse:down when the laser tool is active.
- * @param {Object} options - Fabric.js event options containing pointer coordinates.
+ * @param {Object} pixelCoords - Object containing {x, y} pixel coordinates.
  */
-function startLaserPointerEvent(options) {
+function startLaserPointerEvent(pixelCoords) {
     if (!window.isRecording || !window.isRecording()) return; // Only record if recording is active
+    if (!pixelCoords) { logMessage('Error: Missing pixelCoords for startLaserPointerEvent','ERROR'); return; }
     if (activeLaserEvent) {
         logMessage('Warning: startLaserPointerEvent called while another event was active. Finalizing previous.', 'WARN');
-        finalizeLaserPointerEvent(options); // Finalize the previous one just in case
+        // Cannot easily get pixel coords here, just clear the old event
+        activeLaserEvent = null;
     }
 
-    const pointer = window.canvas.getPointer(options.e);
     const timeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now(); // Get current recording time
 
     activeLaserEvent = {
@@ -1224,7 +1225,7 @@ function startLaserPointerEvent(options) {
         end_time_offset: null,
         duration_ms: null,
         points: [
-            { x: pointer.x, y: pointer.y, timeOffset: timeOffset } // Record the starting point
+            { x: pixelCoords.x, y: pixelCoords.y, timeOffset: timeOffset } // Record the starting point (pixel coords)
         ]
     };
 
@@ -1235,18 +1236,17 @@ function startLaserPointerEvent(options) {
 /**
  * Adds a point to the currently active laser pointer event.
  * Called on mouse:move when the laser tool is active.
- * @param {Object} options - Fabric.js event options containing pointer coordinates.
+ * @param {Object} pixelCoords - Object containing {x, y} pixel coordinates.
  */
-function addLaserPointerPoint(options) {
+function addLaserPointerPoint(pixelCoords) {
     // Only add points if recording and an event is active
-    if (!window.isRecording || !window.isRecording() || !activeLaserEvent) return;
+    if (!window.isRecording || !window.isRecording() || !activeLaserEvent || !pixelCoords) return;
 
-    const pointer = window.canvas.getPointer(options.e);
     const timeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now();
 
     activeLaserEvent.points.push({
-        x: pointer.x,
-        y: pointer.y,
+        x: pixelCoords.x, // Use passed pixel coordinates
+        y: pixelCoords.y, // Use passed pixel coordinates
         timeOffset: timeOffset
     });
     // Optional: Add throttling here if needed for performance
@@ -1255,18 +1255,18 @@ function addLaserPointerPoint(options) {
 /**
  * Finalizes the currently active laser pointer event.
  * Called on mouse:up.
- * @param {Object} options - Fabric.js event options containing pointer coordinates.
+ * @param {Object} pixelCoords - Object containing {x, y} pixel coordinates.
  */
-function finalizeLaserPointerEvent(options) {
+function finalizeLaserPointerEvent(pixelCoords) {
     if (!activeLaserEvent) return; // No active event to finalize
+    if (!pixelCoords) { logMessage('Error: Missing pixelCoords for finalizeLaserPointerEvent','ERROR'); return; }
 
-    const pointer = window.canvas.getPointer(options.e);
     const timeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now();
 
     // Add the final point
     activeLaserEvent.points.push({
-        x: pointer.x,
-        y: pointer.y,
+        x: pixelCoords.x, // Use passed pixel coordinates
+        y: pixelCoords.y, // Use passed pixel coordinates
         timeOffset: timeOffset
     });
 

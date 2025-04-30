@@ -64,7 +64,7 @@ window.fabric = fabric;
         // Store canvas globally
         window.canvas = canvas;
         
-        // Set up cursor tail tracking
+        // Set up cursor trail tracking
         setupCursorTrailTracking(canvas);
         
         // Log initialization
@@ -211,47 +211,50 @@ window.fabric = fabric;
     };
     
     // Re-implementing cursor trail update function
-    window.updateCursorTrail = function(pointer) {
-        if (!showCursorTail) return;
+    window.updateCursorTrail = function(pointer, pixelCoords) {
+        if (!showCursorTail || !pixelCoords) return;
         
         const now = Date.now();
         
         // Store current position (canvas coordinates)
-        lastKnownMousePosition = { x: pointer.x, y: pointer.y };
+        // lastKnownMousePosition = { x: pointer.x, y: pointer.y }; // Can be removed if not used elsewhere
         
-        // Check if mouse has moved at least 3 pixels from the last logged point
+        // Check if mouse has moved at least 3 pixels from the last logged point (using canvas coords for move check)
         const lastPoint = cursorTrailPoints.length > 0 ? 
-            cursorTrailPoints[cursorTrailPoints.length - 1] : 
-            { x: pointer.x - 10, y: pointer.y - 10, time: 0 }; // Start with a slight offset
+            cursorTrailPoints[cursorTrailPoints.length - 1] :
+            // Use canvas coords for initial offset check
+            { cx: pointer.x - 10, cy: pointer.y - 10, time: 0 }; 
         
-        const distance = calculateDistance(lastKnownMousePosition, lastPoint);
+        // Calculate distance using canvas coordinates for visual spacing
+        const distance = calculateDistance({x: pointer.x, y: pointer.y}, {x: lastPoint.cx, y: lastPoint.cy});
         
         // Only add a new point if movement exceeds the pixel threshold (3px)
         if (distance >= 3) {
-            // Add new point with timestamp
+            // *** Store BOTH canvas and pixel coordinates ***
             cursorTrailPoints.push({
-                x: pointer.x,
-                y: pointer.y,
+                cx: pointer.x,
+                cy: pointer.y,
+                px: pixelCoords.x,
+                py: pixelCoords.y,
                 time: now,
                 opacity: 1
             });
             
-            // Log the position
+            // Log the position (displaying pixel coords for consistency)
             if (typeof logMessage === 'function') {
-                logMessage(`Cursor trail updated: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                logMessage(`Cursor trail updated: Canvas(X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}) Pixel(X: ${pixelCoords.x}, Y: ${pixelCoords.y})`, 'DEBUG');
             }
             
-            // IMPORTANT: Directly send this data to the recording system
-            // This ensures mouse data is captured even if event listeners aren't being triggered
+            // IMPORTANT: Send PIXEL coordinates to the recording system
             if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
                 // *** START DIAGNOSTIC LOGGING ***
-                console.log(`RECORDING COORDS (Canvas): X=${pointer.x}, Y=${pointer.y}`);
+                console.log(`RECORDING COORDS (Pixel): X=${pixelCoords.x}, Y=${pixelCoords.y}`);
                 // *** END DIAGNOSTIC LOGGING ***
-                window.updateCursorTrailPosition(pointer.x, pointer.y);
-                logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+                window.updateCursorTrailPosition(pixelCoords.x, pixelCoords.y);
+                logMessage(`Sent PIXEL cursor position to recording system: X: ${pixelCoords.x}, Y: ${pixelCoords.y}`, 'DEBUG');
             }
             
-            // Render the updated trail
+            // Render the updated trail (uses cx, cy internally)
             renderCursorTrail();
             
             // Periodically clean up old points
@@ -369,6 +372,30 @@ function getPixelCoordinatesFromCanvasPoint(canvasPoint) {
 }
 
 /**
+ * NEW: Convert image pixel coordinates to canvas coordinates
+ * @param {Object} pixelPoint - Point with x, y in image pixel space
+ * @returns {Object|null} Point with x, y in canvas space, or null if no image/canvas
+ */
+function getCanvasCoordinatesFromPixelPoint(pixelPoint) {
+    if (!window.canvas) return null;
+    const imgObject = window.canvas.getObjects().find(obj => obj.type === 'image');
+    if (!imgObject) return null;
+
+    // Get the current scale factor of the image on the canvas
+    const scale = imgObject.scaleX; // Assuming uniform scale
+
+    // Get the image's top-left corner position on the canvas (usually 0,0)
+    const imageOriginX = imgObject.left;
+    const imageOriginY = imgObject.top;
+
+    // Convert pixel coords to canvas coords
+    const canvasX = (pixelPoint.x * scale) + imageOriginX;
+    const canvasY = (pixelPoint.y * scale) + imageOriginY;
+
+    return { x: canvasX, y: canvasY };
+}
+
+/**
  * Check if mouse has moved significantly and log if needed
  * @param {Object} currentPos - Current mouse position (canvas coordinates)
  */
@@ -477,31 +504,31 @@ function setupCursorTrailTracking(canvas) {
     
     // Add our custom event handlers
     canvas.on('mouse:move', function(options) {
-        const pointer = canvas.getPointer(options.e);
-        
-        // Check if mouse button is down and trail is enabled
-        // *** MODIFICATION: Check if bounding box is NOT active ***
-        const isBBoxActive = window.DrawingTools && typeof window.DrawingTools.isInBoundingBoxMode === 'function' && window.DrawingTools.isInBoundingBoxMode();
+        const pointer = canvas.getPointer(options.e); // Canvas coordinates
+        const pixelCoords = getPixelCoordinatesFromCanvasPoint(pointer); // Pixel coordinates
 
-        // *** NEW: Add laser pointer point ***
-        // This should happen regardless of the visual trail setting, but only if laser tool is active
+        // Check if mouse button is down and trail is enabled
+        const isBBoxActive = window.DrawingTools && typeof window.DrawingTools.isInBoundingBoxMode === 'function' && window.DrawingTools.isInBoundingBoxMode();
         const isLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
+
         if (isLaserToolActive && isMouseDown && typeof window.addLaserPointerPoint === 'function') {
-            window.addLaserPointerPoint(options);
+            // Pass pixel coordinates directly
+            if (pixelCoords) { // Ensure pixelCoords are valid
+                window.addLaserPointerPoint(pixelCoords);
+            }
         }
 
-        // Check if the visual trail should be shown
-        if (isMouseDown && window.cursorTrailEnabled && !isBBoxActive) {
-            updateCursorTrail(pointer); // Add point for visual trail
+        if (isMouseDown && window.cursorTrailEnabled && !isBBoxActive && pixelCoords) { // Check if pixelCoords are valid
+            updateCursorTrail(pointer, pixelCoords); // Pass both sets of coordinates
             logMessage('Cursor trail point added', 'DEBUG');
         }
-        
-        // Update coordinate display always
-        updateCoordinatesDisplay(Math.round(pointer.x), Math.round(pointer.y));
-        
-        // DEBUG: Log mouse move coordinates
-        // Temporarily disable verbose logging
-        // checkAndLogMouseMovement({x: pointer.x, y: pointer.y});
+
+        // Update coordinate display with IMAGE PIXEL coordinates
+        if (pixelCoords) {
+            updateCoordinatesDisplay(pixelCoords.x, pixelCoords.y);
+        } else {
+            updateCoordinatesDisplay('---', '---'); 
+        }
     });
     
     // Enable cursor trail when mouse button pressed
@@ -509,14 +536,15 @@ function setupCursorTrailTracking(canvas) {
         // Only activate for left mouse button (button 0)
         if (options.e.button === 0) {
             isMouseDown = true;
-            const pointer = canvas.getPointer(options.e);
+            const pointer = canvas.getPointer(options.e); // Canvas Coords
+            const pixelCoords = getPixelCoordinatesFromCanvasPoint(pointer); // Pixel Coords
 
             // Determine if laser pointer tool is active
             const isLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
 
             // *** NEW: Start laser pointer event ***
-            if (isLaserToolActive && typeof window.startLaserPointerEvent === 'function') {
-                window.startLaserPointerEvent(options);
+            if (isLaserToolActive && typeof window.startLaserPointerEvent === 'function' && pixelCoords) {
+                window.startLaserPointerEvent(pixelCoords);
             }
             
             // Only enable trail visualization if the user has enabled it via the checkbox
@@ -530,7 +558,7 @@ function setupCursorTrailTracking(canvas) {
                     window.showCursorTail = true;
                     updateCursorTrailStatus(true);
                     clearCursorTrail();
-                    updateCursorTrail(pointer); // Render initial point only if BBox not active
+                    updateCursorTrail(pointer, getPixelCoordinatesFromCanvasPoint(pointer)); // Render initial point only if BBox not active
                     logMessage('Mouse down - cursor trail visualization activated', 'DEBUG');
                 } else {
                     showCursorTail = false; // Ensure trail is visually off if BBox is active
@@ -549,12 +577,14 @@ function setupCursorTrailTracking(canvas) {
     canvas.on('mouse:up', function(options) {
         if (options.e.button === 0) { // Only care about left button release
             isMouseDown = false;
+            const pointer = canvas.getPointer(options.e); // Canvas Coords
+            const pixelCoords = getPixelCoordinatesFromCanvasPoint(pointer); // Pixel Coords
 
             // *** NEW: Finalize laser pointer event ***
             // Check if the laser tool was active just before mouse up
             const wasLaserToolActive = (document.getElementById('tool-laser')?.classList.contains('active'));
-            if (wasLaserToolActive && typeof window.finalizeLaserPointerEvent === 'function') {
-                window.finalizeLaserPointerEvent(options);
+            if (wasLaserToolActive && typeof window.finalizeLaserPointerEvent === 'function' && pixelCoords) {
+                window.finalizeLaserPointerEvent(pixelCoords);
             }
 
             if (window.cursorTrailEnabled) {
@@ -698,10 +728,10 @@ function renderCursorTrail() {
         // Calculate size based on opacity (decreasing size as the point ages)
         const dotSize = currentCursorSize * point.opacity;
         
-        // Create dot for trail point with decreasing saliency
+        // *** Use CANVAS coordinates (cx, cy) for rendering ***
         const circle = new fabric.Circle({
-            left: point.x - dotSize/2,
-            top: point.y - dotSize/2,
+            left: point.cx - dotSize/2,
+            top: point.cy - dotSize/2,
             radius: dotSize/2,
             fill: `rgba(255, 0, 0, ${point.opacity * 0.6})`,
             stroke: `rgba(255, 0, 0, ${point.opacity})`,
@@ -717,9 +747,10 @@ function renderCursorTrail() {
     // Always add the current cursor position with full opacity
     if (cursorTrailPoints.length > 0) {
         const lastPoint = cursorTrailPoints[cursorTrailPoints.length - 1];
+        // *** Use CANVAS coordinates (cx, cy) for rendering ***
         const currentCursor = new fabric.Circle({
-            left: lastPoint.x - currentCursorSize/2,
-            top: lastPoint.y - currentCursorSize/2,
+            left: lastPoint.cx - currentCursorSize/2,
+            top: lastPoint.cy - currentCursorSize/2,
             radius: currentCursorSize/2,
             fill: 'rgba(255, 0, 0, 0.6)',
             stroke: 'rgba(255, 0, 0, 1)',
@@ -737,49 +768,53 @@ function renderCursorTrail() {
 
 /**
  * Update cursor trail with current pointer position
- * @param {Object} pointer - The canvas pointer coordinates
+ * @param {Object} pointer - The canvas pointer coordinates {x, y}
+ * @param {Object} pixelCoords - The corresponding image pixel coordinates {x, y}
  */
-function updateCursorTrail(pointer) {
-    if (!showCursorTail) return;
+function updateCursorTrail(pointer, pixelCoords) { // Modified signature
+    if (!showCursorTail || !pixelCoords) return; // Check pixelCoords validity
     
     const now = Date.now();
     
     // Store current position (canvas coordinates)
-    lastKnownMousePosition = { x: pointer.x, y: pointer.y };
+    // lastKnownMousePosition = { x: pointer.x, y: pointer.y }; // Can be removed if not used elsewhere
     
-    // Check if mouse has moved at least 3 pixels from the last logged point
+    // Check if mouse has moved at least 3 pixels from the last logged point (using canvas coords for move check)
     const lastPoint = cursorTrailPoints.length > 0 ? 
-        cursorTrailPoints[cursorTrailPoints.length - 1] : 
-        { x: pointer.x - 10, y: pointer.y - 10, time: 0 }; // Start with a slight offset
+        cursorTrailPoints[cursorTrailPoints.length - 1] :
+        // Use canvas coords for initial offset check
+        { cx: pointer.x - 10, cy: pointer.y - 10, time: 0 }; 
     
-    const distance = calculateDistance(lastKnownMousePosition, lastPoint);
+    // Calculate distance using canvas coordinates for visual spacing
+    const distance = calculateDistance({x: pointer.x, y: pointer.y}, {x: lastPoint.cx, y: lastPoint.cy});
     
     // Only add a new point if movement exceeds the pixel threshold (3px)
     if (distance >= 3) {
-        // Add new point with timestamp
+        // *** Store BOTH canvas and pixel coordinates ***
         cursorTrailPoints.push({
-            x: pointer.x,
-            y: pointer.y,
+            cx: pointer.x,
+            cy: pointer.y,
+            px: pixelCoords.x,
+            py: pixelCoords.y,
             time: now,
             opacity: 1
         });
         
-        // Log the position
+        // Log the position (displaying pixel coords for consistency)
         if (typeof logMessage === 'function') {
-            logMessage(`Cursor trail updated: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+            logMessage(`Cursor trail updated: Canvas(X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}) Pixel(X: ${pixelCoords.x}, Y: ${pixelCoords.y})`, 'DEBUG');
         }
         
-        // IMPORTANT: Directly send this data to the recording system
-        // This ensures mouse data is captured even if event listeners aren't being triggered
+        // IMPORTANT: Send PIXEL coordinates to the recording system
         if (typeof window.updateCursorTrailPosition === 'function' && typeof window.isRecording === 'function' && window.isRecording()) {
             // *** START DIAGNOSTIC LOGGING ***
-            console.log(`RECORDING COORDS (Canvas): X=${pointer.x}, Y=${pointer.y}`);
+            console.log(`RECORDING COORDS (Pixel): X=${pixelCoords.x}, Y=${pixelCoords.y}`);
             // *** END DIAGNOSTIC LOGGING ***
-            window.updateCursorTrailPosition(pointer.x, pointer.y);
-            logMessage(`Sent cursor position to recording system: X: ${Math.round(pointer.x)}, Y: ${Math.round(pointer.y)}`, 'DEBUG');
+            window.updateCursorTrailPosition(pixelCoords.x, pixelCoords.y);
+            logMessage(`Sent PIXEL cursor position to recording system: X: ${pixelCoords.x}, Y: ${pixelCoords.y}`, 'DEBUG');
         }
         
-        // Render the updated trail
+        // Render the updated trail (uses cx, cy internally)
         renderCursorTrail();
         
         // Periodically clean up old points
