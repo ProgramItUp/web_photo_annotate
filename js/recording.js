@@ -1086,7 +1086,7 @@ async function saveAnnotationData() {
         version: "2.0", // New schema version
         recordingStartTime: recordingTimestamp,
         totalDuration: totalDuration,
-        imageInfo: imageInfo,
+        imageInfo: imageInfo, // contains the url: document.getElementById('url-image')?.value || null
         audioBlobBase64: audioBlobBase64 // Include Base64 audio string or null
     };
 
@@ -1096,19 +1096,37 @@ async function saveAnnotationData() {
     // Create a blob from the JSON data
     const jsonBlob = new Blob([jsonData], { type: 'application/json' });
 
-    // Generate filename
-    const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `annotation_${dateStr}.json`;
+    // Generate filename based on stored image base name
+    const baseFilename = window.currentImageBaseName || 'annotation'; // Use stored name
+    const suggestedFilename = `${baseFilename}_annotation.json`; // Construct the suggested name
 
-    // Use FileSaver.js to trigger download
-    try {
-        saveAs(jsonBlob, filename);
-        logMessage(`Annotation data saved as ${filename}`, 'INFO');
-        } catch (error) {
-        console.error('Error using FileSaver:', error);
-        logMessage(`Error saving file: ${error.message}`, 'ERROR');
-        alert('Failed to save the annotation file. See console for details.');
+    // --- Attempt to use Save File Picker API first, fallback to FileSaver.js ---
+    if (window.showSaveFilePicker) {
+        logMessage('Attempting to save using the File System Access API (Save Dialog)...', 'INFO');
+        // Use await here as saveFileWithDialog is async
+        const saved = await saveFileWithDialog(suggestedFilename, jsonBlob);
+        if (!saved) {
+            // Optional: Could add a message indicating fallback won't happen if user cancelled.
+            // If saveFileWithDialog failed for reasons other than cancellation, 
+            // we might still want to avoid the fallback, or try it cautiously.
+            logMessage('Save with dialog did not complete (cancelled or error).', 'INFO');
+            // Decide if fallback is desired after cancellation/error.
+            // For now, we just stop if the dialog method fails/cancels.
         }
+        // No explicit fallback here after cancellation/error from dialog
+    } else {
+        // Fallback to FileSaver.js if the API is not supported
+        logMessage('File System Access API not supported, falling back to FileSaver.js direct download.', 'INFO');
+        try {
+            saveAs(jsonBlob, suggestedFilename);
+            logMessage(`Annotation data saved as ${suggestedFilename} using FileSaver.js`, 'INFO');
+        } catch (error) {
+            console.error('Error using FileSaver:', error);
+            logMessage(`Error saving file with FileSaver.js: ${error.message}`, 'ERROR');
+            alert('Failed to save the annotation file automatically. See console for details.');
+        }
+    }
+    // --- End Save Logic ---
 }
 
 /**
@@ -3028,4 +3046,47 @@ function recordAudioEvent(type) {
         }
     }
 }
+
+// --- NEW: Helper for Save File Picker API ---
+/**
+ * Saves a file using the File System Access API (showSaveFilePicker).
+ * Provides a native "Save As" dialog.
+ * @param {string} suggestedName - The default filename to suggest to the user.
+ * @param {Blob} blob - The data blob to save.
+ * @returns {Promise<boolean>} True if saved successfully, false otherwise (including cancellation).
+ */
+async function saveFileWithDialog(suggestedName, blob) {
+    try {
+        const options = {
+            suggestedName: suggestedName,
+            types: [{
+                description: 'JSON Annotation Data',
+                accept: { 'application/json': ['.json'] },
+            }],
+        };
+        // Request a file handle.
+        const handle = await window.showSaveFilePicker(options);
+        // Create a FileSystemWritableFileStream to write to.
+        const writable = await handle.createWritable();
+        // Write the blob data to the stream.
+        await writable.write(blob);
+        // Close the file and write the contents to disk.
+        await writable.close();
+        logMessage(`File saved successfully via Save Dialog: ${handle.name}`, 'INFO');
+        return true;
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            // User cancelled the save dialog
+            logMessage('File save dialog cancelled by user.', 'INFO');
+        } else {
+            // Other errors (browser support, permissions, etc.)
+            console.error('Error using showSaveFilePicker:', err);
+            logMessage(`Error saving file via dialog: ${err.message}`, 'ERROR');
+            // Optionally, alert the user about the error if it's not cancellation
+            alert(`Failed to save file: ${err.message}. Ensure your browser supports the File System Access API and permissions are granted.`);
+        }
+        return false;
+    }
+}
+// --- END NEW HELPER ---
 

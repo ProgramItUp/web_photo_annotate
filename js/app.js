@@ -614,6 +614,18 @@ function loadLocalImage(event) {
     const file = event.target.files[0];
     logMessage(`Loading local image: ${file.name} (${Math.round(file.size/1024)} KB)`, 'INFO');
     
+    // --- NEW: Update global base name ---
+    if (typeof getFilenameBase === 'function') {
+        window.currentImageBaseName = getFilenameBase(file.name);
+        logMessage(`Set currentImageBaseName to: ${window.currentImageBaseName}`, 'DEBUG');
+    } else {
+        logMessage('getFilenameBase function not available, cannot set base name.', 'WARN');
+        // Fallback: extract crudely if needed, or leave as default
+        const dotIndex = file.name.lastIndexOf('.');
+        window.currentImageBaseName = (dotIndex > 0) ? file.name.substring(0, dotIndex) : file.name;
+    }
+    // --- END NEW ---
+    
     // Create a FileReader to read the image file
     const reader = new FileReader();
     
@@ -651,6 +663,16 @@ function loadUrlImage() {
         logMessage('No URL provided. Please enter an image URL.', 'WARN');
         return;
     }
+    
+    // --- NEW: Update global base name ---
+    if (typeof getFilenameBase === 'function') {
+        window.currentImageBaseName = getFilenameBase(url);
+        logMessage(`Set currentImageBaseName to: ${window.currentImageBaseName}`, 'DEBUG');
+    } else {
+        logMessage('getFilenameBase function not available, cannot set base name.', 'WARN');
+        window.currentImageBaseName = 'image_from_url'; // Simple fallback
+    }
+    // --- END NEW ---
     
     logMessage(`Loading image from URL: ${url}`);
     loadImageFromUrl(url);
@@ -1075,4 +1097,9 @@ function recordToolChange(toolName) {
     } else {
         logMessage(`Tool change event ignored: ${toolName} (not recording)`, 'DEBUG');
     }
-} 
+}
+
+// Global variable to store the base name of the currently loaded image
+window.currentImageBaseName = 'annotation';
+
+console.log('app.js loaded'); 

@@ -189,6 +189,7 @@ window.transformCoordinates = transformCoordinates;
 window.showEmailModal = showEmailModal;
 window.sendEmail = sendEmail;
 window.initializeEmailModal = initializeEmailModal;
+window.getFilenameBase = getFilenameBase;
 
 /**
  * Handle cursor trail update message
@@ -239,6 +240,59 @@ function sendEmail() {
  */
 function initializeEmailModal() {
     logMessage('Email modal initialization with event handling removed', 'DEBUG');
+}
+
+/**
+ * Extracts the base filename (without extension) from a URL or path string.
+ * Handles URLs, simple paths, and returns a default for data URLs or empty inputs.
+ * @param {string | null | undefined} urlOrPath - The URL or path string.
+ * @returns {string} The base filename or a default name.
+ */
+function getFilenameBase(urlOrPath) {
+    if (!urlOrPath) {
+        return 'annotation';
+    }
+
+    // Handle data URLs - No longer needed here, name is captured on load.
+    // Return a generic name if somehow a data URL is passed directly.
+    if (urlOrPath.startsWith('data:')) {
+        return 'image_data'; 
+    }
+
+    try {
+        // Use URL parsing for robustness
+        const url = new URL(urlOrPath);
+        let pathname = url.pathname;
+
+        // Get the part after the last slash
+        const lastSlashIndex = pathname.lastIndexOf('/');
+        let filename = (lastSlashIndex >= 0) ? pathname.substring(lastSlashIndex + 1) : pathname;
+
+        // Remove extension
+        const dotIndex = filename.lastIndexOf('.');
+        if (dotIndex > 0) { // Ensure dot is not the first character
+            return filename.substring(0, dotIndex);
+        }
+        return filename || 'image'; // Return filename or a default if empty after processing
+
+    } catch (e) {
+        // Fallback for simple paths that aren't valid URLs
+        let filename = urlOrPath;
+        const lastSlashIndex = filename.lastIndexOf('/');
+        if (lastSlashIndex >= 0) {
+            filename = filename.substring(lastSlashIndex + 1);
+        }
+        const lastBackslashIndex = filename.lastIndexOf('\\\\'); // Handle Windows paths
+        if (lastBackslashIndex >= 0) {
+            filename = filename.substring(lastBackslashIndex + 1);
+        }
+
+        const dotIndex = filename.lastIndexOf('.');
+        if (dotIndex > 0) {
+            return filename.substring(0, dotIndex);
+        }
+        return filename || 'annotation'; // Default fallback
+    }
 }
 
 function getFormattedTimestamp() {
