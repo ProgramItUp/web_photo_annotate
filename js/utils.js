@@ -19,7 +19,7 @@ let currentLogLevel = LOG_LEVELS.DEBUG; // Set default log level
  * @param {string} level - The log level: DEBUG, INFO, WARN, ERROR
  */
 function logMessage(message, level = 'INFO') {
-    const timestamp = new Date().toISOString();
+    const timestamp = getFormattedTimestamp();
     const logArea = document.getElementById('log-area');
     const formattedMessage = `[${timestamp}] [${level}] ${message}`;
     console.log(formattedMessage);
@@ -239,4 +239,16 @@ function sendEmail() {
  */
 function initializeEmailModal() {
     logMessage('Email modal initialization with event handling removed', 'DEBUG');
+}
+
+function getFormattedTimestamp() {
+    const now = new Date();
+    const year = String(now.getFullYear()).slice(-2);
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+    return `${month}/${day}/${year} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 } 

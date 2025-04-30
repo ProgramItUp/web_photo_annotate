@@ -16,10 +16,7 @@ const targetUrl = process.argv[2];
 
 // Define actions to perform on the page
 const actionsToPerform = [
-  // Type the target URL into the input field
-  { type: 'type', selector: '#url-image', text: targetUrl }, 
-  // Click the Load URL button
-  { type: 'click', selector: '#load-url-btn' } 
+  // No actions needed, just load the page
 ];
 
 // Check if URL argument is provided
@@ -88,11 +85,11 @@ async function testPage(urlToProcess, actions) {
         if (msg.type.startsWith('TESTER SERVER')) {
             prefix = msg.type;
         } else if (['LOG', 'ERROR', 'WARN', 'INFO', 'DEBUG'].includes(msg.type)) {
-            prefix = `PAGE ${msg.type}`;
+            prefix = `FROM JS ${msg.type}`;
         } else if (msg.type === 'PAGE JS_ERROR') {
-            prefix = msg.type;
+            prefix = `FROM JS ${msg.type}`;
         } else {
-             prefix = `PAGE ${msg.type}`;
+             prefix = `FROM JS ${msg.type}`;
         }
 
         if (isErrorType || containsErrorLoading) {
@@ -118,7 +115,7 @@ async function testPage(urlToProcess, actions) {
   } else {
     console.log(`${colors.green}[PUP CLIENT] Test PASSED (No errors detected)${colors.reset}`);
   }
-  console.log(`[PUP CLIENT] Total time: ${totalDuration}s`);
+  console.log(`[PUP CLIENT] Total time: ${totalDuration}s (Completed at ${new Date().toLocaleString()})`);
   console.log('====================');
 }
 
