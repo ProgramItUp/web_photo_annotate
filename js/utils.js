@@ -243,12 +243,31 @@ function initializeEmailModal() {
 
 function getFormattedTimestamp() {
     const now = new Date();
-    const year = String(now.getFullYear()).slice(-2);
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
-    return `${month}/${day}/${year} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+    const options = {
+        timeZone: 'America/New_York',
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false // Use 24-hour format internally for consistency
+    };
+
+    // Format the date and time parts according to the locale and timezone
+    // We'll manually reconstruct the MM/DD/YY HH:MM:SS part
+    const formatter = new Intl.DateTimeFormat('en-US', options);
+    const parts = formatter.formatToParts(now).reduce((acc, part) => {
+        acc[part.type] = part.value;
+        return acc;
+    }, {});
+
+    // Construct the date/time string in the desired format
+    const dateStr = `${parts.month}/${parts.day}/${parts.year}`;
+    const timeStr = `${parts.hour}:${parts.minute}:${parts.second}`;
+    
+    // Get milliseconds separately as Intl.DateTimeFormat doesn't handle them reliably across all browsers/versions in this way
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); 
+
+    return `${dateStr} ${timeStr}.${milliseconds}`;
 } 
