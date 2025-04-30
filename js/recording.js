@@ -3138,7 +3138,7 @@ function updateEventViewer() {
     const drawingCategories = ['laser_pointer', 'bounding_box']; // Add other drawing event keys here
     let allDrawingEvents = [];
 
-    // Gather events from specified categories
+    // 1. Gather events from specified categories
     drawingCategories.forEach(category => {
         if (Array.isArray(recordedEvents[category])) {
             recordedEvents[category].forEach(event => {
@@ -3156,16 +3156,28 @@ function updateEventViewer() {
         }
     });
 
-    // Sort events chronologically (newest first for display)
+    // 2. Sort events chronologically (OLDEST first for numbering)
+    allDrawingEvents.sort((a, b) => a.sort_time - b.sort_time);
+
+    // 3. Assign tool numbers per category
+    const toolCounters = {}; // e.g., { laser_pointer: 0, bounding_box: 0 }
+    allDrawingEvents.forEach(event => {
+        const category = event.category;
+        if (drawingCategories.includes(category)) { // Only number known drawing categories
+            if (!toolCounters[category]) {
+                toolCounters[category] = 0;
+            }
+            toolCounters[category]++;
+            event.tool_number = toolCounters[category];
+        }
+    });
+
+    // 4. Re-sort events chronologically (NEWEST first for display)
     allDrawingEvents.sort((a, b) => b.sort_time - a.sort_time);
 
-    // Get the last 4 events // <<< REMOVED: Don't limit to 4 events >>>
-    // const recentEvents = allDrawingEvents.slice(0, 4); 
-    const recentEvents = allDrawingEvents; // Use all events
-
-    // Format the display strings
+    // 5. Format the display strings
     const currentRecTime = isRecording ? getCurrentRecordingTime() : (allDrawingEvents[0]?.sort_time ?? 0); // Use last event time if not recording
-    const displayLines = recentEvents.map(event => {
+    const displayLines = allDrawingEvents.map(event => {
         // Map category key to a user-friendly name
         let eventType = "Unknown Event";
         switch (event.category) {
@@ -3176,16 +3188,19 @@ function updateEventViewer() {
         }
 
         const relativeTime = formatRelativeTime(event.sort_time, currentRecTime);
+        const toolNumber = event.tool_number || ''; // Get assigned number or empty string
 
-        // Format with padding for alignment
-        const typePadding = 18; // Adjust as needed
-        const formattedType = eventType.padEnd(typePadding);
+        // Format with padding for alignment (adjust padding)
+        const typePadding = 18; // Adjust as needed for Type + Number
+        const formattedType = eventType.padEnd(typePadding - String(toolNumber).length -1); // Leave space for number and a space
         const formattedTime = relativeTime.padStart(10); // Adjust as needed
 
-        return `${formattedType}${formattedTime}`;
+        // Construct the line: Type Number Time
+        // <<< CHANGED: Added 5 spaces before formattedTime >>>
+        return `${formattedType} ${toolNumber}${' '.repeat(5)}${formattedTime}`;
     });
 
-    // Update the textarea
+    // 6. Update the textarea
     viewer.value = displayLines.join('\n');
 }
 

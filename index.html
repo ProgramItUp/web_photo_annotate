@@ -94,6 +94,25 @@
                         <span class="ms-2 badge bg-warning" id="cursor-trail-status">READY</span>
                     </div>
                 </div>
+
+                <!-- Audio Recording -->
+                <div class="controls-panel">
+                    <h6>Audio Recording</h6>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-sm btn-success flex-grow-1" id="record-btn">Start Recording</button>
+                        <button class="btn btn-sm btn-danger d-none" id="stop-btn">Stop</button>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="recording-indicator" id="recording-indicator">● Recording</span>
+                        <span class="ms-auto recording-indicator" id="recording-timer">00:00</span>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <div class="audio-volume-meter flex-grow-1 me-2" id="volume-meter">
+                            <div class="volume-level" id="volume-level"></div>
+                        </div>
+                        <span class="fw-bold fs-5" id="total-recording-time">00:00</span>
+                    </div>
+                </div>
                 
                 <!-- Drawing Tools -->
                 <div class="controls-panel">
@@ -116,23 +135,13 @@
                         <button type="button" class="btn btn-sm btn-outline-danger" id="delete-selected">Delete</button>
                     </div>
                 </div>
-                
-                <!-- Audio Recording -->
+
+                <!-- Event Log -->
                 <div class="controls-panel">
-                    <h6>Audio Recording</h6>
-                    <div class="d-flex gap-2 mb-2">
-                        <button class="btn btn-sm btn-success flex-grow-1" id="record-btn">Start Recording</button>
-                        <button class="btn btn-sm btn-danger d-none" id="stop-btn">Stop</button>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <span class="recording-indicator" id="recording-indicator">● Recording</span>
-                        <span class="ms-auto recording-indicator" id="recording-timer">00:00</span>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <div class="audio-volume-meter flex-grow-1 me-2" id="volume-meter">
-                            <div class="volume-level" id="volume-level"></div>
-                        </div>
-                        <span class="fw-bold fs-5" id="total-recording-time">00:00</span>
+                    <h6>Event Log</h6>
+                    <div class="d-flex align-items-start gap-1"> 
+                        <textarea id="event-viewer-list" rows="5" readonly class="form-control form-control-sm flex-grow-1" placeholder="Drawing events will appear here..."></textarea>
+                        <button id="delete-last-event-btn" class="btn btn-sm btn-outline-danger">Delete Last Event</button>
                     </div>
                 </div>
                 
@@ -148,13 +157,6 @@
                         <button class="btn btn-sm btn-warning d-none flex-grow-1" id="replay-pause-btn">Pause</button>
                         <button class="btn btn-sm btn-danger d-none" id="replay-stop-btn">Stop</button>
                     </div>
-                </div>
-
-                <!-- Event Log -->
-                <div class="controls-panel">
-                    <h6>Event Log</h6>
-                    <textarea id="event-viewer-list" rows="5" readonly class="form-control form-control-sm mb-1" placeholder="Drawing events will appear here..."></textarea>
-                    <button id="delete-last-event-btn" class="btn btn-sm btn-outline-danger w-100">Delete Last Event</button>
                 </div>
             </div>
             
