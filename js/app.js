@@ -434,6 +434,23 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // --- NEW: Add event listener for Delete Last Event button --- 
+    const deleteLastEventBtn = document.getElementById('delete-last-event-btn');
+    if (deleteLastEventBtn) {
+        deleteLastEventBtn.addEventListener('click', () => {
+            // Check if the function exists on the window object
+            if (typeof window.deleteLastDrawingEvent === 'function') {
+                window.deleteLastDrawingEvent();
+            } else {
+                logMessage('Error: deleteLastDrawingEvent function not found.', 'ERROR');
+            }
+        });
+        logMessage('Delete Last Event button enabled', 'DEBUG');
+    } else {
+        logMessage('Could not find Delete Last Event button', 'ERROR');
+    }
+    // --- END NEW SECTION ---
 });
 
 /**

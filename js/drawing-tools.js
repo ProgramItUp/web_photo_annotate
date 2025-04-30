@@ -1115,6 +1115,12 @@ function finalizeBoundingBoxEvent(finalCoords) {
         
         logMessage(`Finalized bounding_box event ${activeBoundingBoxEvent.event_id}. Valid: ${!!finalCoords}`, 'DEBUG');
         activeBoundingBoxEvent = null; // Clear active event reference
+
+        // <<< NEW: Update event viewer after finalizing >>>
+        if (typeof window.updateEventViewer === 'function') {
+            window.updateEventViewer();
+        }
+        // <<< END NEW >>>
     }
 }
 
@@ -1323,6 +1329,12 @@ function finalizeLaserPointerEvent(pixelCoords) {
     logMessage(`Finalized laser_pointer event ${activeLaserEvent.event_id}. Duration: ${activeLaserEvent.duration_ms.toFixed(0)}ms, Points: ${activeLaserEvent.points.length}`, 'DEBUG');
 
     activeLaserEvent = null; // Clear the active event reference
+
+    // <<< NEW: Update event viewer after finalizing >>>
+    if (typeof window.updateEventViewer === 'function') {
+        window.updateEventViewer();
+    }
+    // <<< END NEW >>>
 }
 
 // Export functions for use in recording.js

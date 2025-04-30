@@ -543,6 +543,7 @@ function startAudioRecording() {
                 
                 // Start timer updates
                 recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+                eventViewerInterval = setInterval(updateEventViewer, 10000); // <<< CHANGED: Update event viewer every 10 seconds
                 
                 // Update UI
                 updateRecordingUI(true, false);
@@ -728,6 +729,7 @@ function startAudioRecording() {
             
             // Start timer updates
             recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+            eventViewerInterval = setInterval(updateEventViewer, 10000); // <<< CHANGED: Update event viewer every 10 seconds
             
             // Update UI
             updateRecordingUI(true, false);
@@ -812,6 +814,12 @@ function stopAudioRecording() {
         clearInterval(recordingTimerInterval);
         recordingTimerInterval = null;
     }
+    // <<< NEW: Clear event viewer interval >>>
+    if (eventViewerInterval) {
+        clearInterval(eventViewerInterval);
+        eventViewerInterval = null;
+    }
+    // <<< END NEW SECTION >>>
     
     // Stop capturing mouse data
     
@@ -838,6 +846,10 @@ function stopAudioRecording() {
 
     // Record the audio recording end event
     recordAudioEvent('stop');
+
+    // <<< NEW: Final update to event viewer after stopping >>>
+    updateEventViewer();
+    // <<< END NEW >>>
 }
 
 /**
@@ -1396,6 +1408,9 @@ function updateUIAfterDataLoad(data) {
     notification.innerHTML = `<strong>Success!</strong> Annotation data (V${data.version || '1.0'}) loaded (${eventCount} events${audioBlob ? ', audio included' : ''}).`;
     document.body.appendChild(notification);
     setTimeout(() => { if (notification.parentNode) notification.parentNode.removeChild(notification); }, 4000); // Slightly longer visibility
+
+    // <<< NEW: Update viewer after loading data >>>
+    updateEventViewer();
 }
 
 /**
@@ -3089,4 +3104,138 @@ async function saveFileWithDialog(suggestedName, blob) {
     }
 }
 // --- END NEW HELPER ---
+
+// *** NEW FUNCTION: Format Relative Time ***
+/**
+ * Formats the time difference between an event and the current recording time.
+ * @param {number} eventTimeMs - The time offset of the event in milliseconds.
+ * @param {number} currentTimeMs - The current recording time in milliseconds.
+ * @returns {string} - A human-readable relative time string (e.g., "Now", "5s ago", "2m ago").
+ */
+function formatRelativeTime(eventTimeMs, currentTimeMs) {
+    const diffSeconds = Math.round((currentTimeMs - eventTimeMs) / 1000);
+
+    if (diffSeconds < 2) {
+        return "Now";
+    } else if (diffSeconds < 60) {
+        // <<< CHANGED: Add "about" >>>
+        return `about ${diffSeconds}s ago`; 
+    } else { // >= 60 seconds
+        const diffMinutes = Math.floor(diffSeconds / 60);
+        return `${diffMinutes}m ago`;
+    }
+}
+
+// *** NEW FUNCTION: Update Event Viewer ***
+/**
+ * Updates the event viewer textbox with the latest drawing events.
+ */
+function updateEventViewer() {
+    const viewer = document.getElementById('event-viewer-list');
+    if (!viewer) return; // Exit if the element doesn't exist
+
+    const recordedEvents = window.recordedEvents || {};
+    const drawingCategories = ['laser_pointer', 'bounding_box']; // Add other drawing event keys here
+    let allDrawingEvents = [];
+
+    // Gather events from specified categories
+    drawingCategories.forEach(category => {
+        if (Array.isArray(recordedEvents[category])) {
+            recordedEvents[category].forEach(event => {
+                // Basic validation: Ensure event has a timestamp
+                if (event && (event.start_time_offset !== undefined || event.time_offset !== undefined)) {
+                    // Store category for display name mapping
+                    event.category = category;
+                    // Use a consistent property for sorting
+                    event.sort_time = event.start_time_offset ?? event.time_offset;
+                    allDrawingEvents.push(event);
+                } else {
+                    logMessage(`Event viewer skipped invalid event in ${category}: ${JSON.stringify(event)}`, 'WARN');
+                }
+            });
+        }
+    });
+
+    // Sort events chronologically (newest first for display)
+    allDrawingEvents.sort((a, b) => b.sort_time - a.sort_time);
+
+    // Get the last 4 events // <<< REMOVED: Don't limit to 4 events >>>
+    // const recentEvents = allDrawingEvents.slice(0, 4); 
+    const recentEvents = allDrawingEvents; // Use all events
+
+    // Format the display strings
+    const currentRecTime = isRecording ? getCurrentRecordingTime() : (allDrawingEvents[0]?.sort_time ?? 0); // Use last event time if not recording
+    const displayLines = recentEvents.map(event => {
+        // Map category key to a user-friendly name
+        let eventType = "Unknown Event";
+        switch (event.category) {
+            case 'laser_pointer': eventType = "Laser Pointer"; break;
+            case 'bounding_box': eventType = "Bounding Box"; break;
+            // Add cases for other drawing tools here
+            default: eventType = event.category;
+        }
+
+        const relativeTime = formatRelativeTime(event.sort_time, currentRecTime);
+
+        // Format with padding for alignment
+        const typePadding = 18; // Adjust as needed
+        const formattedType = eventType.padEnd(typePadding);
+        const formattedTime = relativeTime.padStart(10); // Adjust as needed
+
+        return `${formattedType}${formattedTime}`;
+    });
+
+    // Update the textarea
+    viewer.value = displayLines.join('\n');
+}
+
+// *** NEW FUNCTION: Delete Last Drawing Event ***
+/**
+ * Deletes the most recent drawing event from the recordedEvents structure.
+ */
+function deleteLastDrawingEvent() {
+    if (!window.recordedEvents) {
+        logMessage('No recorded events to delete from.', 'WARN');
+        return;
+    }
+
+    const drawingCategories = ['laser_pointer', 'bounding_box']; // Must match categories checked in updateEventViewer
+    let lastEvent = null;
+    let lastEventCategory = null;
+    let lastEventTimestamp = -1;
+
+    // Find the chronologically latest event across relevant categories
+    drawingCategories.forEach(category => {
+        const events = window.recordedEvents[category];
+        if (Array.isArray(events) && events.length > 0) {
+            const categoryLastEvent = events[events.length - 1];
+            const eventTimestamp = categoryLastEvent.start_time_offset ?? categoryLastEvent.time_offset;
+            if (eventTimestamp !== undefined && eventTimestamp > lastEventTimestamp) {
+                lastEventTimestamp = eventTimestamp;
+                lastEvent = categoryLastEvent;
+                lastEventCategory = category;
+            }
+        }
+    });
+
+    // If we found an event to delete
+    if (lastEvent && lastEventCategory) {
+        const eventArray = window.recordedEvents[lastEventCategory];
+        const indexToRemove = eventArray.findIndex(event => event === lastEvent); // Find by object reference
+
+        if (indexToRemove !== -1) {
+            eventArray.splice(indexToRemove, 1);
+            logMessage(`Deleted last event (Type: ${lastEventCategory}, Timestamp: ${lastEventTimestamp})`, 'INFO');
+            updateEventViewer(); // Refresh the viewer
+        } else {
+            logMessage('Could not find the identified last event in its array for deletion.', 'ERROR');
+        }
+    } else {
+        logMessage('No drawing events found to delete.', 'INFO');
+    }
+}
+
+// --- Expose functions needed by UI listeners --- 
+window.updateEventViewer = updateEventViewer; 
+window.deleteLastDrawingEvent = deleteLastDrawingEvent;
 
