@@ -406,8 +406,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (zoomNaturalBtn) {
         zoomNaturalBtn.addEventListener('click', () => {
             if (typeof window.resizeCanvas === 'function') {
-                logMessage('Resetting zoom to Natural Size 1:1', 'INFO');
-                window.resizeCanvas(); 
+                window.currentZoomState = 'natural'; // Set state BEFORE calling resize
+                logMessage('Setting zoom to Natural Size 1:1', 'INFO');
+                window.resizeCanvas();
             } else {
                 logMessage('Error: resizeCanvas function not found.', 'ERROR');
             }
@@ -415,13 +416,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Constants for Max Zoom Dimensions
-    const MAX_ZOOM_WIDTH = 1600;
-    const MAX_ZOOM_HEIGHT = 1100;
+    const MAX_ZOOM_WIDTH = 1200;
+    const MAX_ZOOM_HEIGHT = 900;
+
+    // Global state for current zoom level
+    window.currentZoomState = 'natural'; // 'natural' or 'max_dim'
 
     const zoomMaxDimBtn = document.getElementById('zoom-max-dim-btn');
     if (zoomMaxDimBtn) {
         zoomMaxDimBtn.addEventListener('click', () => {
             if (typeof window.resizeCanvasToFit === 'function') {
+                window.currentZoomState = 'max_dim'; // Set state BEFORE calling resize
                 logMessage(`Resizing image to fit max dimensions ${MAX_ZOOM_WIDTH}x${MAX_ZOOM_HEIGHT}`, 'INFO');
                 window.resizeCanvasToFit(MAX_ZOOM_WIDTH, MAX_ZOOM_HEIGHT);
             } else {
@@ -706,6 +711,8 @@ function loadImageFromUrl(url) {
             // Resize the canvas to match the image aspect ratio
             if (typeof window.resizeCanvas === 'function') {
                 window.resizeCanvas();
+                window.currentZoomState = 'natural'; // Reset zoom state on new image load
+                logMessage('Zoom state reset to natural on URL image load.', 'DEBUG');
             } else {
                 logMessage('resizeCanvas function not available', 'ERROR');
             }

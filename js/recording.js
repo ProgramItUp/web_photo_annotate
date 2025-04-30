@@ -1496,7 +1496,34 @@ async function replayAnnotation() {
             await new Promise(resolve => setTimeout(resolve, 1000)); // Temporary delay
             logMessage('Replay V2: Image loaded.', 'INFO');
 
-            logMessage('Replay V2: Applying initial state...', 'DEBUG');
+            // --- NEW: Apply Initial Zoom State ---
+            const zoomState = initial_state.zoom_state || 'natural';
+            logMessage(`Replay V2: Applying initial zoom state: ${zoomState}`, 'INFO');
+            try {
+                if (zoomState === 'max_dim') {
+                    if (typeof window.resizeCanvasToFit === 'function') {
+                        // Assuming MAX_ZOOM_WIDTH and MAX_ZOOM_HEIGHT are available globally from app.js
+                        window.resizeCanvasToFit(MAX_ZOOM_WIDTH, MAX_ZOOM_HEIGHT);
+                        logMessage(`Replay V2: Called resizeCanvasToFit(${MAX_ZOOM_WIDTH}, ${MAX_ZOOM_HEIGHT})`, 'DEBUG');
+                    } else {
+                        logMessage('Replay V2: resizeCanvasToFit function not found! Cannot apply max_dim zoom.', 'ERROR');
+                    }
+                } else { // Default to natural zoom
+                    if (typeof window.resizeCanvas === 'function') {
+                        window.resizeCanvas();
+                        logMessage('Replay V2: Called resizeCanvas() for natural zoom.', 'DEBUG');
+                    } else {
+                        logMessage('Replay V2: resizeCanvas function not found! Cannot apply natural zoom.', 'ERROR');
+                    }
+                }
+                // Add a small delay after resize call to allow rendering if needed
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+            } catch (zoomError) {
+                logMessage(`Replay V2: Error applying initial zoom: ${zoomError.message}`, 'ERROR');
+            }
+            // --- End Apply Initial Zoom State ---
+
+            logMessage('Replay V2: Applying initial state (filters/cursor)... ', 'DEBUG');
             // Apply brightness, contrast, cursor size from initial_state
             const brightnessSlider = document.getElementById('brightness');
             const contrastSlider = document.getElementById('contrast');
@@ -1769,19 +1796,8 @@ async function replayAnnotation() {
 
             // --- Handle ongoing Laser Pointer Points --- //
             let processedLaserPointThisFrame = false;
-            // console.log(`DEBUG: Checking laser points. Active: ${!!activeLaserEventDetails}, Index: ${currentLaserPointIndex}, Total Points: ${activeLaserPoints?.length}, Elapsed: ${elapsedMs.toFixed(0)}ms`); // <<< REMOVED previous basic log
-            /* // <<< REMOVED detailed pre-check log block
-            if (activeLaserEventDetails && activeLaserPoints && activeLaserPoints.length > currentLaserPointIndex) {
-                const nextPointTime = activeLaserPoints[currentLaserPointIndex].timeOffset;
-                const comparison = `${nextPointTime?.toFixed(2)} <= ${elapsedMs.toFixed(2)}`;
-                console.log(`DEBUG: Laser point check: Index=${currentLaserPointIndex}, NextPointTime=${nextPointTime?.toFixed(2)}, Elapsed=${elapsedMs.toFixed(2)}, Condition=${comparison}, Result=${nextPointTime <= elapsedMs}`);
-            } else if (activeLaserEventDetails) {
-                console.log(`DEBUG: Laser point check: Index=${currentLaserPointIndex}, No more points left.`);
-            }
-            */
-
             // Refactored Loop: Process all points ready in this frame
-            while (activeLaserEventDetails && currentLaserPointIndex < activeLaserPoints.length) {
+            while (activeLaserEventDetails && currentLaserPointIndex < activeLaserPoints.length && activeLaserPoints[currentLaserPointIndex].timeOffset <= elapsedMs) {
                 const point = activeLaserPoints[currentLaserPointIndex];
 
                 // Ensure point data is valid before checking time
@@ -1797,9 +1813,17 @@ async function replayAnnotation() {
                     // console.log(`  Processing point ${currentLaserPointIndex}: TimeOffset=${point?.timeOffset?.toFixed(0)}ms, Pos=(${point?.x?.toFixed(0)}, ${point?.y?.toFixed(0)})`);
                     if (typeof point.x === 'number' && typeof point.y === 'number') {
                         if (window.DrawingTools?.addToLaserTrail) {
-                            console.log(`    Calling addToLaserTrail for point index ${currentLaserPointIndex} (${point.x.toFixed(0)}, ${point.y.toFixed(0)}) at elapsed ${elapsedMs.toFixed(0)}ms`);
-                            window.DrawingTools.addToLaserTrail(point.x, point.y);
-                            lastCursorPos = { x: point.x, y: point.y }; // Update cursor position
+                            // *** CONVERT PIXEL TO CANVAS for drawing ***
+                            const canvasCoords = getCanvasCoordinatesFromPixelPoint({x: point.x, y: point.y});
+                            if (canvasCoords) {
+                                console.log(`    Calling addToLaserTrail (Point ${currentLaserPointIndex}) Pixel(${point.x.toFixed(0)}, ${point.y.toFixed(0)}) -> Canvas(${canvasCoords.x.toFixed(0)}, ${canvasCoords.y.toFixed(0)}) at elapsed ${elapsedMs.toFixed(0)}ms`);
+                                window.DrawingTools.addToLaserTrail(canvasCoords.x, canvasCoords.y);
+                                lastCursorPos = { x: canvasCoords.x, y: canvasCoords.y }; // Update cursor position with CANVAS coords
+
+                            } else {
+                                 logMessage(`Failed to convert laser point ${currentLaserPointIndex} to canvas coordinates. Skipping.`, 'WARN');
+                            }
+
                             cursorNeedsUpdate = true;
                             processedLaserPointThisFrame = true;
                         } else {
@@ -1846,12 +1870,29 @@ async function replayAnnotation() {
                 const coord = activeBBoxPoints[currentBBoxPointIndex];
                 if (coord && typeof coord.left === 'number' && typeof coord.top === 'number' && typeof coord.width === 'number' && typeof coord.height === 'number') {
                     if (window.DrawingTools?.updateReplayBoundingBox) {
-                        window.DrawingTools.updateReplayBoundingBox(coord, activeBBoxEventDetails.mode);
-                        processedBBoxPointThisFrame = true;
-                         // Maybe update cursor to corner being dragged? For now, no cursor update based on box.
+                        // *** CONVERT PIXEL TO CANVAS for drawing ***
+                        const pixelCoord = coord; // Already pixel coords
+                        const startCanvas = getCanvasCoordinatesFromPixelPoint({x: pixelCoord.left, y: pixelCoord.top});
+                        const endCanvas = getCanvasCoordinatesFromPixelPoint({x: pixelCoord.left + pixelCoord.width, y: pixelCoord.top + pixelCoord.height});
+
+                        if (startCanvas && endCanvas) {
+                            const canvasCoord = {
+                                left: startCanvas.x,
+                                top: startCanvas.y,
+                                width: endCanvas.x - startCanvas.x,
+                                height: endCanvas.y - startCanvas.y
+                            };
+                            window.DrawingTools.updateReplayBoundingBox(canvasCoord, activeBBoxEventDetails.mode);
+                            processedBBoxPointThisFrame = true;
+                            // Maybe update cursor to corner being dragged? For now, no cursor update based on box.
                         } else {
-                        logMessage('updateReplayBoundingBox not found!', 'ERROR');
-                        activeBBoxEventDetails = null; // Stop trying if function missing
+                             logMessage(`Skipping BBox update at index ${currentBBoxPointIndex} due to coord conversion failure.`, 'WARN');
+                        }
+
+                          processedBBoxPointThisFrame = true;
+                          // Maybe update cursor to corner being dragged? For now, no cursor update based on box.
+                         } else {
+                        logMessage(`Skipping invalid BBox coord at index ${currentBBoxPointIndex}`, 'WARN');
                     }
                 } else {
                     logMessage(`Skipping invalid BBox coord at index ${currentBBoxPointIndex}`, 'WARN');
@@ -1862,33 +1903,54 @@ async function replayAnnotation() {
             // Check if the main bounding box event itself has ended
             if (activeBBoxEventDetails && elapsedMs >= (activeBBoxEventDetails.end_time_offset ?? Infinity)) {
                 logMessage(`Replay V2: Bounding Box event (ID: ${activeBBoxEventDetails.event_id}) finished at ${elapsedMs.toFixed(0)}ms`, 'DEBUG');
-                const finalCoords = activeBBoxEventDetails.final_coords;
-                if (finalCoords && window.DrawingTools?.updateReplayBoundingBox) {
-                     window.DrawingTools.updateReplayBoundingBox(finalCoords, activeBBoxEventDetails.mode);
-                     logMessage(`Applied final bounding box coords: ${JSON.stringify(finalCoords)}`, 'TRACE');
-                } else if (!finalCoords && window.DrawingTools?.removeReplayBoundingBox) {
-                     window.DrawingTools.removeReplayBoundingBox();
-                     logMessage(`Removed invalid final bounding box (ID: ${activeBBoxEventDetails.event_id})`, 'DEBUG');
-                } else if (finalCoords && !window.DrawingTools?.updateReplayBoundingBox) {
-                     logMessage('updateReplayBoundingBox not found for final coords!', 'ERROR');
-                } else if (!finalCoords && !window.DrawingTools?.removeReplayBoundingBox) {
-                     logMessage('removeReplayBoundingBox not found for invalid final box!', 'ERROR');
-                }
+                const finalPixelCoords = activeBBoxEventDetails.final_coords;
+                if (finalPixelCoords && window.DrawingTools?.updateReplayBoundingBox) {
+                    // *** CONVERT PIXEL TO CANVAS for drawing ***
+                    const startCanvas = getCanvasCoordinatesFromPixelPoint({x: finalPixelCoords.left, y: finalPixelCoords.top});
+                    const endCanvas = getCanvasCoordinatesFromPixelPoint({x: finalPixelCoords.left + finalPixelCoords.width, y: finalPixelCoords.top + finalPixelCoords.height});
+                    if (startCanvas && endCanvas) {
+                        const finalCanvasCoords = {
+                            left: startCanvas.x,
+                            top: startCanvas.y,
+                            width: endCanvas.x - startCanvas.x,
+                            height: endCanvas.y - startCanvas.y
+                        };
+                        window.DrawingTools.updateReplayBoundingBox(finalCanvasCoords, activeBBoxEventDetails.mode);
+                        logMessage(`Applied final bounding box coords (Canvas): ${JSON.stringify(finalCanvasCoords)}`, 'TRACE');
+                    } else {
+                         logMessage('Failed to convert final BBox coords to canvas space for final update.', 'ERROR');
+                    }
+
+                      logMessage(`Applied final bounding box coords: ${JSON.stringify(finalPixelCoords)}`, 'TRACE');
+                } else if (!finalPixelCoords && window.DrawingTools?.removeReplayBoundingBox) {
+                      window.DrawingTools.removeReplayBoundingBox();
+                      logMessage(`Removed invalid final bounding box (ID: ${activeBBoxEventDetails.event_id})`, 'DEBUG');
+                } else if (finalPixelCoords && !window.DrawingTools?.updateReplayBoundingBox) {
+                      logMessage('updateReplayBoundingBox not found for final coords!', 'ERROR');
+                } else if (!finalPixelCoords && !window.DrawingTools?.removeReplayBoundingBox) {
+                      logMessage('removeReplayBoundingBox not found for invalid final box!', 'ERROR');
+                  }
 
                 // <<< ADD: Show cursor again after BBox manipulation ends >>>
                 const cursor = document.getElementById('replay-cursor');
                  if (cursor) {
                      // Ensure cursor position is updated to the final box position
-                     if (finalCoords) {
-                         // Update state first
-                         lastCursorPos = { x: finalCoords.left, y: finalCoords.top };
-                         logMessage(`   About to apply styles: X=${lastCursorPos.x.toFixed(0)}, Y=${lastCursorPos.y.toFixed(0)}`, 'TRACE');
-                         // Apply position styles *before* making it visible
-                         cursor.style.left = `${lastCursorPos.x}px`;
-                         cursor.style.top = `${lastCursorPos.y}px`;
-                         cursor.style.display = 'block'; // Make visible at the correct position
-                         logMessage(`   Styles applied: left=${cursor.style.left}, top=${cursor.style.top}, display=${cursor.style.display}`, 'TRACE');
-                         logMessage(`   Showing replay cursor at final BBox pos (${lastCursorPos.x.toFixed(0)}, ${lastCursorPos.y.toFixed(0)})`, 'DEBUG');
+                     if (finalPixelCoords) {
+                         // Convert start corner to CANVAS coords for cursor positioning
+                         const startCanvas = getCanvasCoordinatesFromPixelPoint({x: finalPixelCoords.left, y: finalPixelCoords.top});
+                         if (startCanvas) {
+                          // Update state first
+                          lastCursorPos = { x: startCanvas.x, y: startCanvas.y }; // Use CANVAS coords
+                          logMessage(`   About to apply styles: X=${lastCursorPos.x.toFixed(0)}, Y=${lastCursorPos.y.toFixed(0)}`, 'TRACE');
+                          // Apply position styles *before* making it visible
+                          cursor.style.left = `${lastCursorPos.x}px`;
+                          cursor.style.top = `${lastCursorPos.y}px`;
+                          cursor.style.display = 'block'; // Make visible at the correct position
+                          logMessage(`   Styles applied: left=${cursor.style.left}, top=${cursor.style.top}, display=${cursor.style.display}`, 'TRACE');
+                          logMessage(`   Showing replay cursor at final BBox pos (${lastCursorPos.x.toFixed(0)}, ${lastCursorPos.y.toFixed(0)})`, 'DEBUG');
+                         } else {
+                             logMessage('Failed to convert final BBox coords to canvas space for final update.', 'ERROR');
+                         }
                      } else {
                          // Keep cursor hidden if the event ended badly
                          logMessage('   Keeping replay cursor hidden as BBox event ended with invalid finalCoords.', 'WARN');
@@ -2918,13 +2980,14 @@ function recordInitialState() {
             // Image Info (assuming canvas is loaded)
             image_url: document.getElementById('url-image')?.value || null,
             // TODO: Get actual image dimensions from canvas/image object if available
-            image_width: window.canvas?.width || null,
+            image_width: window.canvas?.width || null, 
             image_height: window.canvas?.height || null,
             // Adjustments
             brightness: parseInt(document.getElementById('brightness')?.value || '0'),
             contrast: parseInt(document.getElementById('contrast')?.value || '0'),
             cursor_size: parseInt(document.getElementById('cursor-size')?.value || DEFAULT_CURSOR_SIZE.toString()),
-            // TODO: Add other relevant states (e.g., current tool, zoom level?)
+            // --- NEW: Record Zoom State ---
+            zoom_state: window.currentZoomState || 'natural' // Get state from app.js
         };
         window.recordedEvents.initial_state.push(initialStateEvent);
         logMessage(`Initial state recorded: ${JSON.stringify(initialStateEvent)}`, 'DEBUG');

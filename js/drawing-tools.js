@@ -821,12 +821,18 @@ function showBoundingBoxNotification() {
  */
 function handleBoundingBoxMouseDown(options) {
     if (!boundingBoxActive) return;
-    const pointer = window.canvas.getPointer(options.e);
+    const pointer = window.canvas.getPointer(options.e); // Canvas coords
+    const pixelCoords = getPixelCoordinatesFromCanvasPoint(pointer); // Pixel coords
 
     // *** START NEW RECORDING EVENT ***
     if (typeof window.isRecording === 'function' && window.isRecording() && !window.isPaused()) {
         const now = Date.now();
         const timeOffset = window.getCurrentRecordingTime();
+        // Ensure pixelCoords are valid before creating event
+        if (!pixelCoords) {
+            logMessage('Error: Cannot get pixel coordinates for bounding box start', 'ERROR');
+            return;
+        }
         activeBoundingBoxEvent = {
             event_id: `bbox_${now}`,
             mode: boundingbox_mode,
@@ -836,11 +842,11 @@ function handleBoundingBoxMouseDown(options) {
             intermediate_coords: [],
             final_coords: null
         };
-        // Add initial point to intermediate coords
+        // Add initial point (PIXEL COORDS) to intermediate coords
         activeBoundingBoxEvent.intermediate_coords.push({
             timeOffset: timeOffset,
-            left: pointer.x,
-            top: pointer.y,
+            left: pixelCoords.x, 
+            top: pixelCoords.y,
             width: 0,
             height: 0
         });
@@ -851,9 +857,9 @@ function handleBoundingBoxMouseDown(options) {
         window.recordedEvents.bounding_box.push(activeBoundingBoxEvent);
         logMessage(`Started recording bounding_box event ${activeBoundingBoxEvent.event_id} (mode: ${boundingbox_mode})`, 'DEBUG');
 
-        // Reset throttling variables
+        // Reset throttling variables (use pixel coords for position check)
         lastRecordedBoxTime = now;
-        lastRecordedBoxPos = { x: pointer.x, y: pointer.y };
+        lastRecordedBoxPos = { x: pixelCoords.x, y: pixelCoords.y }; 
     } else {
         activeBoundingBoxEvent = null; // Not recording
     }
@@ -913,8 +919,10 @@ function handleBoundingBoxMouseDown(options) {
  */
 function handleBoundingBoxMouseMove(options) {
     if (!boundingBoxActive) return;
-    const pointer = window.canvas.getPointer(options.e);
-    let currentCoords = null;
+    const pointer = window.canvas.getPointer(options.e); // Canvas coords
+    const pixelCoords = getPixelCoordinatesFromCanvasPoint(pointer); // Pixel coords
+    let currentCanvasCoords = null; // For visual drawing
+    let currentPixelCoords = null; // For recording
     
     // --- Existing Logic for Drawing/Pointer Mode Update --- //
     if (boundingbox_mode === 'pointer' && pointerDragging) {
@@ -931,7 +939,7 @@ function handleBoundingBoxMouseMove(options) {
             });
             window.canvas.renderAll();
         }
-        currentCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+        currentCanvasCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
     } else if (boundingbox_mode === 'corners' && currentBoundingBox && boundingBoxStartPoint) {
     let width = pointer.x - boundingBoxStartPoint.x;
     let height = pointer.y - boundingBoxStartPoint.y;
@@ -948,7 +956,7 @@ function handleBoundingBoxMouseMove(options) {
             evented: false
         });
     window.canvas.renderAll();
-        currentCoords = { left: left, top: top, width: width, height: height };
+        currentCanvasCoords = { left: left, top: top, width: width, height: height };
     } else {
         return; // Not drawing or dragging
     }
@@ -956,26 +964,46 @@ function handleBoundingBoxMouseMove(options) {
     // --- End Existing Logic --- //
 
     // *** RECORD INTERMEDIATE POINT (Throttled) ***
-    if (activeBoundingBoxEvent && currentCoords) {
+    if (activeBoundingBoxEvent && currentCanvasCoords && pixelCoords) {
         const now = Date.now();
         const timeOffset = window.getCurrentRecordingTime();
         const timeDiff = now - lastRecordedBoxTime;
-        const distDiff = Math.sqrt(Math.pow(pointer.x - lastRecordedBoxPos.x, 2) + Math.pow(pointer.y - lastRecordedBoxPos.y, 2));
+        // Calculate distance using PIXEL coordinates for throttling
+        const distDiff = Math.sqrt(Math.pow(pixelCoords.x - lastRecordedBoxPos.x, 2) + Math.pow(pixelCoords.y - lastRecordedBoxPos.y, 2));
 
         // Check config constants (use window scope or pass them in)
         const interval = window.BOUNDING_BOX_RECORD_INTERVAL_MS || 100;
         const threshold = window.BOUNDING_BOX_RECORD_PIXEL_THRESHOLD || 5;
 
+        // Calculate pixel coordinates for the current box state
+        const startPixelCoords = getPixelCoordinatesFromCanvasPoint({x: currentCanvasCoords.left, y: currentCanvasCoords.top});
+        const endPixelCoords = getPixelCoordinatesFromCanvasPoint({x: currentCanvasCoords.left + currentCanvasCoords.width, y: currentCanvasCoords.top + currentCanvasCoords.height});
+
+        if (startPixelCoords && endPixelCoords) {
+            currentPixelCoords = {
+                left: startPixelCoords.x,
+                top: startPixelCoords.y,
+                width: endPixelCoords.x - startPixelCoords.x,
+                height: endPixelCoords.y - startPixelCoords.y
+            };
+        } else {
+            currentPixelCoords = null; // Could not convert
+        }
+
         if (timeDiff >= interval || distDiff >= threshold) {
-            activeBoundingBoxEvent.intermediate_coords.push({
-                timeOffset: timeOffset,
-                left: currentCoords.left,
-                top: currentCoords.top,
-                width: currentCoords.width,
-                height: currentCoords.height
-            });
+            if (currentPixelCoords) { // Only record if pixel coords are valid
+                activeBoundingBoxEvent.intermediate_coords.push({
+                    timeOffset: timeOffset,
+                    left: currentPixelCoords.left,
+                    top: currentPixelCoords.top,
+                    width: currentPixelCoords.width,
+                    height: currentPixelCoords.height
+                });
+            } else {
+                 logMessage('Warning: Skipping intermediate bbox coord recording due to invalid pixel coords', 'WARN');
+            }
             lastRecordedBoxTime = now;
-            lastRecordedBoxPos = { x: pointer.x, y: pointer.y };
+            lastRecordedBoxPos = { x: pixelCoords.x, y: pixelCoords.y }; // Update last recorded position with pixel coords
             // logMessage(`Recorded intermediate bbox coord (#${activeBoundingBoxEvent.intermediate_coords.length})`, 'DEBUG');
     }
     }
@@ -988,15 +1016,16 @@ function handleBoundingBoxMouseMove(options) {
  */
 function handleBoundingBoxMouseUp(options) {
     if (!boundingBoxActive) return;
-    const pointer = window.canvas.getPointer(options.e);
-    let finalCoords = null;
+    const pointer = window.canvas.getPointer(options.e); // Canvas coords
+    let finalCanvasCoords = null; // For visual update
+    let finalPixelCoords = null; // For recording
     
     // --- Existing Logic for Finalizing Draw/Pointer --- //
     if (boundingbox_mode === 'pointer' && pointerDragging) {
         pointerDragging = false;
         if (activeBoundingBox && (maxX - minX >= 5 && maxY - minY >= 5)) {
-            finalCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
-            activeBoundingBox.set(finalCoords); // Ensure final update
+            finalCanvasCoords = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+            activeBoundingBox.set(finalCanvasCoords); // Ensure final update
             // Re-apply style on finalization
             activeBoundingBox.set({
                 selectable: false,
@@ -1013,7 +1042,7 @@ function handleBoundingBoxMouseUp(options) {
         }
     } else if (boundingbox_mode === 'corners' && currentBoundingBox) {
         if (currentBoundingBox.width >= 5 && currentBoundingBox.height >= 5) {
-            finalCoords = { left: currentBoundingBox.left, top: currentBoundingBox.top, width: currentBoundingBox.width, height: currentBoundingBox.height };
+            finalCanvasCoords = { left: currentBoundingBox.left, top: currentBoundingBox.top, width: currentBoundingBox.width, height: currentBoundingBox.height };
             // Re-apply style on finalization
             currentBoundingBox.set({
                 selectable: false,
@@ -1041,7 +1070,25 @@ function handleBoundingBoxMouseUp(options) {
         window.canvas.hoverCursor = 'default';
     }
 
-    finalizeBoundingBoxEvent(finalCoords);
+    // --- Convert final coords to PIXEL space for recording --- 
+    if (finalCanvasCoords) {
+        const startPixel = getPixelCoordinatesFromCanvasPoint({x: finalCanvasCoords.left, y: finalCanvasCoords.top});
+        const endPixel = getPixelCoordinatesFromCanvasPoint({x: finalCanvasCoords.left + finalCanvasCoords.width, y: finalCanvasCoords.top + finalCanvasCoords.height});
+        if (startPixel && endPixel) {
+            finalPixelCoords = {
+                left: startPixel.x,
+                top: startPixel.y,
+                width: endPixel.x - startPixel.x,
+                height: endPixel.y - startPixel.y
+            };
+        } else {
+            logMessage('Error: Could not convert final bounding box coordinates to pixel space', 'ERROR');
+            finalPixelCoords = null; // Ensure it's null if conversion failed
+        }
+    }
+    // --- End Conversion ---
+
+    finalizeBoundingBoxEvent(finalPixelCoords); // Pass PIXEL coords (or null) to finalize
 }
 
 /**
@@ -1053,7 +1100,7 @@ function finalizeBoundingBoxEvent(finalCoords) {
         const endTimeOffset = window.getCurrentRecordingTime ? window.getCurrentRecordingTime() : Date.now();
         activeBoundingBoxEvent.end_time_offset = endTimeOffset;
         activeBoundingBoxEvent.duration_ms = endTimeOffset - activeBoundingBoxEvent.start_time_offset;
-        activeBoundingBoxEvent.final_coords = finalCoords; // Store final coords or null
+        activeBoundingBoxEvent.final_coords = finalCoords; // Store final PIXEL coords or null
 
         // Add final state to intermediate coords for consistency if it exists
         if (finalCoords) {
