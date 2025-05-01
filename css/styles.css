@@ -252,6 +252,47 @@
 }
 /* Add styles for log card header/buttons if needed later */
 
+/* ==========================================================================
+   Event Log Viewer
+   ========================================================================== */
+.event-list {
+    max-height: 150px; /* Adjust height as needed */
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    background-color: #fff; /* White background for list */
+    padding: 0;
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.8rem; /* Match log area font */
+}
+
+.event-list .list-group-item {
+    cursor: pointer;
+    border-left: none;
+    border-right: none;
+    border-top: none; /* Remove top border for all */
+    padding: 0.3rem 0.6rem; /* Adjust padding */
+}
+
+.event-list .list-group-item:first-child {
+    border-top: none; /* Ensure first item has no top border */
+}
+
+.event-list .list-group-item:last-child {
+    border-bottom: none; /* Remove bottom border for the last item */
+}
+
+.event-list .list-group-item:hover {
+    background-color: #e9ecef;
+}
+
+.event-list .list-group-item.active {
+    background-color: #cfe2ff; /* Bootstrap primary light */
+    border-color: #b6d4fe;
+    color: #000; /* Ensure text is readable */
+    font-weight: bold;
+}
 
 /* ==========================================================================
    Hidden Elements (Currently unused/disabled features)
