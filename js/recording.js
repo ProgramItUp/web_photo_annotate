@@ -3555,51 +3555,68 @@ window.replaySelectedEventSegment = replaySelectedEventSegment;
 // --- Helper for Coordinate Conversion (Example - Needs Actual Implementation based on canvas.js) ---
 // These need to correctly access canvas scale/offset information from canvas.js or global scope
 function getCanvasCoordinatesFromPixelPoint(pixelPoint) {
-    if (!window.canvas || !window.canvas.viewportTransform || !pixelPoint) return null;
+    // --- Detailed Logging Start ---
+    logMessage(`CoordConvert(Point) INPUT: Pixel(${pixelPoint?.x?.toFixed(1)}, ${pixelPoint?.y?.toFixed(1)})`, 'TRACE');
+    const canvas = window.canvas;
+    const bgImage = canvas?.backgroundImage;
+    const vt = canvas?.viewportTransform; // [scaleX, skewY, skewX, scaleY, offsetX, offsetY]
+
+    if (!canvas || !bgImage || !vt || !pixelPoint || typeof pixelPoint.x !== 'number' || typeof pixelPoint.y !== 'number') {
+       logMessage('CoordConvert(Point): Missing data for conversion.', 'WARN');
+       logMessage(`  Details: canvas=${!!canvas}, bgImage=${!!bgImage}, vt=${vt}, pixelPoint=${JSON.stringify(pixelPoint)}`, 'TRACE');
+       return null;
+   }
+
+    logMessage(`  Canvas VT: [${vt.map(n => n.toFixed(2)).join(', ')}]`, 'TRACE');
+    logMessage(`  BG Image: scaleX=${bgImage.scaleX?.toFixed(2)}, scaleY=${bgImage.scaleY?.toFixed(2)}, left=${bgImage.left?.toFixed(1)}, top=${bgImage.top?.toFixed(1)}`, 'TRACE');
+
     // This is a simplified example. Actual conversion might depend on zoom/pan.
     // Assumes viewportTransform is [scaleX, 0, 0, scaleY, offsetX, offsetY]
-    const vt = window.canvas.viewportTransform;
     const scaleX = vt[0];
     const scaleY = vt[3];
     const offsetX = vt[4];
     const offsetY = vt[5];
-    // Need to account for the background image's offset within the canvas as well
-    const bgImage = window.canvas.backgroundImage;
-    if (!bgImage) return null;
 
-    // Basic conversion assuming top-left origin and uniform scaling
-    // This needs refinement based on how the canvas and image are set up
-    const canvasX = (pixelPoint.x * scaleX) + offsetX + (bgImage.left * scaleX);
-    const canvasY = (pixelPoint.y * scaleY) + offsetY + (bgImage.top * scaleY);
-    
-    // Placeholder: Needs verification and refinement based on canvas setup in canvas.js
-    logMessage(`CoordConvert(Point): Pixel(${pixelPoint.x?.toFixed(1)},${pixelPoint.y?.toFixed(1)}) -> Canvas(${canvasX?.toFixed(1)},${canvasY?.toFixed(1)}) | Scale(${scaleX?.toFixed(2)},${scaleY?.toFixed(2)}) Offset(${offsetX?.toFixed(1)},${offsetY?.toFixed(1)}) BgLeftTop(${bgImage.left?.toFixed(1)},${bgImage.top?.toFixed(1)})`, 'TRACE');
+    const imageCanvasLeft = bgImage.left * scaleX + offsetX;
+    const imageCanvasTop = bgImage.top * scaleY + offsetY;
+    const imageCanvasScaleX = bgImage.scaleX * scaleX;
+    const imageCanvasScaleY = bgImage.scaleY * scaleY;
 
-    // Returning pixelPoint for now until conversion is verified
-    // return { x: canvasX, y: canvasY }; 
-     return pixelPoint; // <<< TEMPORARY: Returning original until conversion verified
+    const canvasX = imageCanvasLeft + pixelPoint.x * imageCanvasScaleX;
+    const canvasY = imageCanvasTop + pixelPoint.y * imageCanvasScaleY;
+
+    logMessage(`  Intermediate: imgCanvasScale=(${imageCanvasScaleX.toFixed(2)}, ${imageCanvasScaleY.toFixed(2)}), imgCanvasLeftTop=(${imageCanvasLeft.toFixed(1)}, ${imageCanvasTop.toFixed(1)})`, 'TRACE');
+    logMessage(`CoordConvert(Point) OUTPUT: Canvas(${canvasX?.toFixed(1)}, ${canvasY?.toFixed(1)})`, 'DEBUG'); // Changed level to DEBUG
+    // --- Detailed Logging End ---
+
+    return { x: canvasX, y: canvasY };
 }
 
 function getCanvasCoordinatesFromPixelRect(pixelRect) {
-    if (!pixelRect) return null;
-    const topLeft = getCanvasCoordinatesFromPixelPoint({ x: pixelRect.left, y: pixelRect.top });
-    // Convert width/height based on scale - simple approach
-    if (!window.canvas || !window.canvas.viewportTransform) return null;
-     const scaleX = window.canvas.viewportTransform[0];
-     const scaleY = window.canvas.viewportTransform[3];
+    if (!pixelRect || typeof pixelRect.left !== 'number' || typeof pixelRect.top !== 'number' || typeof pixelRect.width !== 'number' || typeof pixelRect.height !== 'number') {
+        logMessage('CoordConvert(Rect): Invalid pixelRect input.', 'WARN');
+       return null;
+   }
 
-    if (!topLeft) return null;
+   // Convert top-left and bottom-right corners
+   const topLeftCanvas = getCanvasCoordinatesFromPixelPoint({ x: pixelRect.left, y: pixelRect.top });
+   const bottomRightCanvas = getCanvasCoordinatesFromPixelPoint({ x: pixelRect.left + pixelRect.width, y: pixelRect.top + pixelRect.height });
 
-    // Placeholder: Needs verification and refinement based on canvas setup in canvas.js
-     logMessage(`CoordConvert(Rect): Pixel(l:${pixelRect.left?.toFixed(1)}, t:${pixelRect.top?.toFixed(1)}, w:${pixelRect.width?.toFixed(1)}, h:${pixelRect.height?.toFixed(1)}) -> Canvas(l:${topLeft.x?.toFixed(1)}, t:${topLeft.y?.toFixed(1)}, w:${pixelRect.width}, h:${pixelRect.height})`, 'TRACE');
- 
-    // Returning pixelRect dimensions for now
-    // return {
-    //    left: topLeft.x,
-    //    top: topLeft.y,
-    //    width: pixelRect.width * scaleX,
-    //    height: pixelRect.height * scaleY
-    // };
-     return pixelRect; // <<< TEMPORARY: Returning original until conversion verified
+   if (!topLeftCanvas || !bottomRightCanvas) {
+        logMessage('CoordConvert(Rect): Failed to convert corner points.', 'WARN');
+       return null;
+   }
+
+   // Calculate canvas dimensions
+   const canvasRect = {
+       left: topLeftCanvas.x,
+       top: topLeftCanvas.y,
+       width: bottomRightCanvas.x - topLeftCanvas.x,
+       height: bottomRightCanvas.y - topLeftCanvas.y
+   };
+
+    logMessage(`CoordConvert(Rect): Pixel(l:${pixelRect.left?.toFixed(1)}, t:${pixelRect.top?.toFixed(1)}, w:${pixelRect.width?.toFixed(1)}, h:${pixelRect.height?.toFixed(1)}) -> Canvas(l:${canvasRect.left?.toFixed(1)}, t:${canvasRect.top?.toFixed(1)}, w:${canvasRect.width?.toFixed(1)}, h:${canvasRect.height?.toFixed(1)})`, 'TRACE');
+
+   return canvasRect;
 }
 

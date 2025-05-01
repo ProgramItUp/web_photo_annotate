@@ -104,25 +104,24 @@
    ========================================================================== */
 .canvas-container {
     position: relative;
-    margin: 0px 0;
+    width: 100%; /* Or desired width */
+    /* height: 0; /* Set height dynamically or based on aspect ratio */
+    /* padding-bottom: 75%; /* Example: 4:3 Aspect Ratio (75%) */ 
     border: 1px solid #ccc;
-    overflow: hidden;
+    overflow: hidden; /* Ensure canvas content stays within bounds */
 }
 
-#image-container { /* Often used as the main container for the canvas */
-    min-height: 400px;
-    background-color: #f8f9fa;
+#canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
 }
 
 .coordinates-display {
-    font-family: monospace;
-    padding: 5px 8px;
-    background-color: #f1f1f1;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    font-weight: bold;
-    border: 1px solid #ddd;
-    color: #333;
+    font-size: 0.8em;
+    color: #666;
 }
 
 /* ==========================================================================
@@ -131,25 +130,25 @@
 .recording-indicator {
     color: red;
     font-weight: bold;
-    display: none; /* Initially hidden */
-    font-size: 0.8rem;
+    visibility: hidden; /* Hidden by default */
+}
+
+.recording-indicator.active {
+    visibility: visible;
 }
 
 .audio-volume-meter {
-    width: 100%;
-    height: 16px;
-    background-color: #f1f1f1;
-    border-radius: 4px;
+    height: 10px; 
+    background-color: #e9ecef;
+    border-radius: 5px;
     overflow: hidden;
-    margin-top: 8px;
-    display: none; /* Initially hidden */
 }
 
 .volume-level {
     height: 100%;
-    background-color: #28a745;
-    width: 0%;
-    transition: width 0.1s ease-in-out;
+    background-color: #28a745; /* Green */
+    width: 0%; /* Start with no volume */
+    transition: width 0.1s linear; /* Smooth transition for volume changes */
 }
 
 /* Cursor trail related status indicators/controls */
@@ -258,21 +257,11 @@
 .event-list {
     max-height: 150px; /* Adjust height as needed */
     overflow-y: auto;
-    border: 1px solid #dee2e6;
-    border-radius: 0.25rem;
-    background-color: #fff; /* White background for list */
-    padding: 0;
-    margin: 0;
-    font-family: monospace;
-    font-size: 0.8rem; /* Match log area font */
+    font-size: 0.8em; /* Smaller font size */
 }
 
 .event-list .list-group-item {
-    cursor: pointer;
-    border-left: none;
-    border-right: none;
-    border-top: none; /* Remove top border for all */
-    padding: 0.3rem 0.6rem; /* Adjust padding */
+    padding: 0.25rem 0.5rem; /* Reduced padding */
 }
 
 .event-list .list-group-item:first-child {
@@ -357,4 +346,23 @@
 }
 /* Remove any duplicate or now redundant rules outside the media query */
 /* Example: The original h6 rule outside the media query might be redundant now */
-/* Check if any rules were left outside sections */ 
+/* Check if any rules were left outside sections */
+
+/* Add styles for specific components */
+.drawing-tools-scrollable {
+    max-height: 250px; /* Adjust as needed */
+    overflow-y: auto;
+}
+
+/* Custom cursor style */
+.custom-cursor {
+    position: absolute;
+    width: 20px; /* Default size */
+    height: 20px; /* Default size */
+    border: 2px solid red;
+    border-radius: 50%;
+    pointer-events: none; /* Important: allows clicking through the cursor */
+    transform: translate(-50%, -50%); /* Center the cursor on the mouse pointer */
+    z-index: 1000; /* Ensure it's above other elements */
+    display: none; /* Initially hidden */
+} 
