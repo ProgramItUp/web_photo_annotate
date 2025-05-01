@@ -461,6 +461,14 @@ function startAudioRecording() {
     // Check if we're running from file:// protocol
     const isFileProtocol = window.location.protocol === 'file:' || window.isFileProtocol === true;
     
+    // <<< NEW: Disable Export Button >>>
+    const exportBtn = document.getElementById('export-analysis-btn');
+    if (exportBtn) {
+        exportBtn.disabled = true;
+        logMessage('Export analysis button disabled on recording start.', 'DEBUG');
+    }
+    // <<< END NEW >>>
+
     // For file:// protocol, we skip the permission check and go straight to requesting access
     // since permissions can't be persisted anyway
     if (isFileProtocol) {
@@ -498,12 +506,20 @@ function startAudioRecording() {
                 
                 mediaRecorder.onstop = function() {
                     // Combine recorded audio chunks into a single blob
-                    audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    window.audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // Assign to window
+                    logMessage(`Recording stopped: Final audio blob created (size: ${window.audioBlob.size}, type: ${window.audioBlob.type})`, 'INFO');
                     
                     // Update UI
                     updateRecordingUI(false, false);
                     
-                    logMessage('Recording stopped', 'INFO');
+                    // <<< MOVED: Update button states AFTER blob is created >>>
+                    if (typeof window.updateButtonStates === 'function') {
+                        window.updateButtonStates();
+                        logMessage('mediaRecorder.onstop: Called window.updateButtonStates.', 'DEBUG');
+                    } else {
+                        logMessage('mediaRecorder.onstop: window.updateButtonStates function not found.', 'WARN');
+                    }
+                    // <<< END MOVE >>>
                 };
                 
                 // Clear existing data
@@ -685,12 +701,20 @@ function startAudioRecording() {
             
             mediaRecorder.onstop = function() {
                 // Combine recorded audio chunks into a single blob
-                audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                window.audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // Assign to window
+                logMessage(`Recording stopped: Final audio blob created (size: ${window.audioBlob.size}, type: ${window.audioBlob.type})`, 'INFO');
                 
                 // Update UI
                 updateRecordingUI(false, false);
                 
-                logMessage('Recording stopped', 'INFO');
+                // <<< MOVED: Update button states AFTER blob is created >>>
+                if (typeof window.updateButtonStates === 'function') {
+                    window.updateButtonStates();
+                    logMessage('mediaRecorder.onstop: Called window.updateButtonStates.', 'DEBUG');
+                } else {
+                    logMessage('mediaRecorder.onstop: window.updateButtonStates function not found.', 'WARN');
+                }
+                // <<< END MOVE >>>
             };
             
             // Clear existing data
@@ -802,11 +826,12 @@ function stopAudioRecording() {
     const finalRecordingTime = getCurrentRecordingTime();
     
     // Stop the media recorder
-    mediaRecorder.stop();
+    mediaRecorder.stop(); // Note: onstop handler will process audioBlob and update UI
     
     // Stop all tracks in the stream to release the microphone
     if (audioStream) {
         audioStream.getTracks().forEach(track => track.stop());
+        audioStream = null; // Clear the stream reference
     }
     
     // Clear the timer interval
@@ -849,7 +874,9 @@ function stopAudioRecording() {
 
     // <<< NEW: Final update to event viewer after stopping >>>
     updateEventViewer();
-    // <<< END NEW >>>
+    
+    // <<< MOVED: Call to updateButtonStates moved into mediaRecorder.onstop >>>
+    logMessage('stopAudioRecording: MediaRecorder stopped, onstop handler will update buttons.', 'DEBUG');
 }
 
 /**
@@ -1287,8 +1314,16 @@ async function processJsonAnnotationData(jsonContent) {
         const eventCount = Object.values(window.recordedEvents).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
         logMessage(`Annotation data loaded: ${eventCount} events. Audio found: ${!!audioBlob}`, 'INFO');
 
-        // --- Update UI --- //
-        updateUIAfterDataLoad(window.loadedAnnotationData); // Pass the potentially adapted V1 data
+        // --- Update UI (including button states) --- //
+        updateUIAfterDataLoad(window.loadedAnnotationData); // Handles image load, duration display etc.
+        logMessage('processJsonAnnotationData: updateUIAfterDataLoad called (recording.js).', 'TRACE'); 
+        // Explicitly call the button state updater from app.js AFTER data is assigned
+        if (typeof window.updateButtonStates === 'function') {
+            window.updateButtonStates();
+            logMessage('processJsonAnnotationData: Called window.updateButtonStates (app.js).', 'DEBUG');
+        } else {
+            logMessage('processJsonAnnotationData: window.updateButtonStates function not found.', 'WARN');
+        }
 
     } catch (error) {
         console.error('Error processing annotation JSON:', error);
@@ -1335,6 +1370,7 @@ function processEmailAnnotationData(emailContent) {
         // Process the decoded JSON string using the standard JSON processor
         // The processJsonAnnotationData function handles both V1 and V2 structure internally
         processJsonAnnotationData(decodedJsonString);
+        logMessage('processEmailAnnotationData: processJsonAnnotationData called, which will call updateUIAfterDataLoad.', 'TRACE'); // Confirmation log
 
     } catch (error) {
         console.error('Error processing encoded TXT data:', error);
@@ -1411,6 +1447,8 @@ function updateUIAfterDataLoad(data) {
 
     // <<< NEW: Update viewer after loading data >>>
     updateEventViewer();
+    // <<< REMOVED previous NOTE about button state >>>
+    logMessage('updateUIAfterDataLoad: (in recording.js) Non-button UI elements updated.', 'TRACE');
 }
 
 /**

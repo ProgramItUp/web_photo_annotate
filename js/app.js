@@ -451,6 +451,28 @@ document.addEventListener('DOMContentLoaded', function() {
         logMessage('Could not find Delete Last Event button', 'ERROR');
     }
     // --- END NEW SECTION ---
+
+    // --- NEW: Add event listener for Export Analysis button --- 
+    const exportAnalysisBtn = document.getElementById('export-analysis-btn');
+    if (exportAnalysisBtn) {
+        exportAnalysisBtn.addEventListener('click', () => {
+             // Check if the function exists on the window object
+             if (typeof window.exportForAnalysis === 'function') {
+                window.exportForAnalysis();
+            } else {
+                logMessage('Error: exportForAnalysis function not found (export_data.js might be missing or failed to load).', 'ERROR');
+                alert('Export functionality is not available. Check console for errors.');
+            }
+        });
+        logMessage('Export Analysis button listener added', 'DEBUG');
+    } else {
+        logMessage('Could not find Export Analysis button', 'ERROR');
+    }
+    // --- END NEW SECTION ---
+
+    // --- NEW: Set initial button states ---
+    updateButtonStates(); 
+    // --- END NEW SECTION ---
 });
 
 /**
@@ -1118,5 +1140,37 @@ function recordToolChange(toolName) {
 
 // Global variable to store the base name of the currently loaded image
 window.currentImageBaseName = 'annotation';
+
+// *** NEW FUNCTION: Update Button States ***
+/**
+ * Updates the enabled/disabled state of buttons like Replay and Export 
+ * based on the availability of recorded data.
+ */
+function updateButtonStates() {
+    logMessage('App: Updating button states...', 'TRACE');
+    const replayBtn = document.getElementById('replay-btn');
+    const exportBtn = document.getElementById('export-analysis-btn');
+    
+    // Check if there are any recorded events in any category
+    const hasEvents = window.recordedEvents && Object.values(window.recordedEvents).some(arr => Array.isArray(arr) && arr.length > 0);
+    // Check if audio blob exists
+    const hasAudio = !!window.audioBlob;
+
+    const canReplay = hasEvents || hasAudio;
+    const canExport = hasEvents || hasAudio; // Same condition for export for now
+
+    if (replayBtn) {
+        replayBtn.disabled = !canReplay;
+        logMessage(`App: Replay button state set to disabled=${!canReplay}`, 'TRACE');
+    }
+
+    if (exportBtn) {
+        exportBtn.disabled = !canExport;
+        logMessage(`App: Export button state set to disabled=${!canExport}`, 'TRACE');
+    }
+}
+// Make it accessible globally so recording.js can call it
+window.updateButtonStates = updateButtonStates;
+// *** END NEW FUNCTION ***
 
 console.log('app.js loaded'); 
