@@ -435,23 +435,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // --- NEW: Add event listener for Delete Last Event button --- 
-    const deleteLastEventBtn = document.getElementById('delete-last-event-btn');
-    if (deleteLastEventBtn) {
-        deleteLastEventBtn.addEventListener('click', () => {
-            // Check if the function exists on the window object
-            if (typeof window.deleteLastDrawingEvent === 'function') {
-                window.deleteLastDrawingEvent();
-            } else {
-                logMessage('Error: deleteLastDrawingEvent function not found.', 'ERROR');
-            }
-        });
-        logMessage('Delete Last Event button enabled', 'DEBUG');
-    } else {
-        logMessage('Could not find Delete Last Event button', 'ERROR');
-    }
-    // --- END NEW SECTION ---
-
     // --- NEW: Add event listener for Export Analysis button --- 
     const exportAnalysisBtn = document.getElementById('export-analysis-btn');
     if (exportAnalysisBtn) {
@@ -470,27 +453,49 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     // --- END NEW SECTION ---
 
-    // --- NEW: Add event listener for Play Selected Audio button ---
-    const playSelectedAudioBtn = document.getElementById('play-selected-audio-btn');
-    if (playSelectedAudioBtn) {
-        playSelectedAudioBtn.addEventListener('click', () => {
-            // Now calls the segment replay function in recording.js
-            if (typeof window.replaySelectedEventSegment === 'function') {
-                window.replaySelectedEventSegment(); 
-            } else {
-                logMessage('Error: replaySelectedEventSegment function not found.', 'ERROR');
-                alert('Segment replay functionality is not available.');
-            }
-        });
-        logMessage('Replay Event button listener added', 'DEBUG');
-    } else {
-        logMessage('Could not find Replay Event button (#play-selected-audio-btn)', 'ERROR');
-    }
-    // --- END NEW SECTION ---
-
     // --- NEW: Set initial button states ---
     updateButtonStates(); 
     // --- END NEW SECTION ---
+
+    // *** NEW: Event Delegation Listener for Interactive Event List ***
+    const eventListContainer = document.getElementById('interactive-event-list');
+
+    if (eventListContainer) {
+        eventListContainer.addEventListener('click', function(event) {
+            const target = event.target;
+            
+            // Find the closest button (either the button itself or the icon inside)
+            const playButton = target.closest('.play-event-btn');
+            const deleteButton = target.closest('.delete-event-btn');
+
+            if (playButton) {
+                const eventId = playButton.dataset.eventId;
+                if (eventId && typeof window.replayEventFromRow === 'function') {
+                    logMessage(`Play button clicked for event: ${eventId}`, 'DEBUG');
+                    window.replayEventFromRow(eventId);
+                } else {
+                    logMessage('Could not replay event: Missing event ID or replay function.', 'ERROR');
+                }
+            } else if (deleteButton) {
+                const eventId = deleteButton.dataset.eventId;
+                if (eventId && typeof window.deleteSpecificDrawingEvent === 'function') {
+                     // Optional: Add a confirmation dialog
+                     if (confirm(`Are you sure you want to delete event ${eventId}? This cannot be undone.`)) {
+                        logMessage(`Delete button clicked for event: ${eventId}`, 'DEBUG');
+                        window.deleteSpecificDrawingEvent(eventId);
+                     } else {
+                         logMessage(`Deletion cancelled for event: ${eventId}`, 'INFO');
+                     }
+                } else {
+                    logMessage('Could not delete event: Missing event ID or delete function.', 'ERROR');
+                }
+            }
+            // If clicked elsewhere in the list item, do nothing for now
+        });
+        logMessage('Added event delegation listener to #interactive-event-list', 'DEBUG');
+    } else {
+        logMessage('Could not find #interactive-event-list to attach listener.', 'ERROR');
+    }
 });
 
 /**
@@ -1201,109 +1206,6 @@ function updateButtonStates() {
 }
 // Make it accessible globally so recording.js can call it
 window.updateButtonStates = updateButtonStates;
-// *** END NEW FUNCTION ***
-
-// *** NEW FUNCTION: Play Selected Event Audio ***
-/**
- * Prepares audio playback for the selected event.
- * Finds the event, ensures audio blob exists, decodes/caches the full audio,
- * extracts the relevant segment, and sets up Web Audio API nodes.
- * @returns {Promise<object|null>} A promise resolving with { sourceNode, audioContext, segmentDuration } or null on failure.
- */
-async function playSelectedEventAudio() {
-    logMessage('PlayAudioPrep: Preparing audio for selected event...', 'DEBUG');
-    
-    try {
-        // 1. Check preconditions
-        if (!window.selectedEventId) {
-            logMessage('PlayAudioPrep: No event selected.', 'WARN');
-            return null; 
-        }
-        if (!window.audioBlob) {
-            logMessage('PlayAudioPrep: No audio blob available for playback.', 'WARN');
-            return null; 
-        }
-
-        // 2. Find the selected event
-        let selectedEvent = null;
-        const categoriesToSearch = Object.keys(window.recordedEvents || {});
-        for (const category of categoriesToSearch) {
-            if (Array.isArray(window.recordedEvents[category])) {
-                selectedEvent = window.recordedEvents[category].find(e => e.event_id === window.selectedEventId);
-                if (selectedEvent) break; // Found it
-            }
-        }
-
-        // 3. Validate event
-        if (!selectedEvent) {
-            logMessage(`PlayAudioPrep: Could not find event with ID: ${window.selectedEventId}`, 'ERROR');
-            return null;
-        }
-        if (selectedEvent.start_time_offset === undefined || selectedEvent.end_time_offset === undefined) {
-            logMessage(`PlayAudioPrep: Selected event ${window.selectedEventId} lacks required time offsets.`, 'ERROR');
-            return null;
-        }
-
-        // 4. Decode Full Audio (Use Cache)
-        if (!window.decodedFullAudioBuffer) {
-            logMessage('PlayAudioPrep: Decoding full audio blob for playback (first play)...', 'DEBUG');
-            try {
-                const buffer = await decodeAudioBlob(window.audioBlob); // Assumes decodeAudioBlob is globally available
-                window.decodedFullAudioBuffer = buffer;
-                logMessage('PlayAudioPrep: Full audio decoded and cached.', 'INFO');
-            } catch (decodeError) {
-                logMessage(`PlayAudioPrep: Error decoding full audio blob: ${decodeError.message}`, 'ERROR');
-                console.error('Audio Decoding Error:', decodeError);
-                window.decodedFullAudioBuffer = null; // Ensure it's null on error
-                return null;
-            }
-        } else {
-            logMessage('PlayAudioPrep: Using cached decoded full audio buffer.', 'DEBUG');
-        }
-
-        // Ensure buffer exists after attempting decode/cache check
-        if (!window.decodedFullAudioBuffer) {
-            logMessage('PlayAudioPrep: Decoded audio buffer is still null after checking cache/decode attempt.', 'ERROR');
-            return null;
-        }
-
-        // 5. Extract Segment
-        const startTimeSec = selectedEvent.start_time_offset / 1000;
-        const endTimeSec = selectedEvent.end_time_offset / 1000;
-        logMessage(`PlayAudioPrep: Extracting audio segment: ${startTimeSec.toFixed(3)}s - ${endTimeSec.toFixed(3)}s`, 'DEBUG');
-
-        const segmentBuffer = extractAudioSegment(window.decodedFullAudioBuffer, startTimeSec, endTimeSec); // Assumes extractAudioSegment is globally available
-
-        if (!segmentBuffer) {
-            logMessage('PlayAudioPrep: Failed to extract audio segment (returned null).', 'ERROR');
-            return null;
-        }
-        logMessage(`PlayAudioPrep: Segment extracted (Duration: ${segmentBuffer.duration.toFixed(3)}s).`, 'DEBUG');
-        const segmentDuration = segmentBuffer.duration;
-
-        // 6. Play Segment (Web Audio API)
-        logMessage('PlayAudioPrep: Setting up Web Audio API nodes...', 'DEBUG');
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createBufferSource();
-        source.buffer = segmentBuffer;
-
-        // Add gain node for potential future volume control
-        const gainNode = audioContext.createGain();
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        // Return the nodes and context for the caller to manage
-        logMessage('PlayAudioPrep: Audio nodes prepared successfully.', 'INFO');
-        return { sourceNode: source, audioContext: audioContext, segmentDuration: segmentDuration };
-
-    } catch (error) {
-        logMessage(`PlayAudioPrep: Unexpected error during audio preparation: ${error.message}`, 'ERROR');
-        console.error('Playback Error:', error);
-        return null; // Indicate failure
-    }
-}
-// Expose the function globally
-window.playSelectedEventAudio = playSelectedEventAudio;
 // *** END NEW FUNCTION ***
 
 console.log('app.js loaded'); 

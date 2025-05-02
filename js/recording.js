@@ -559,7 +559,8 @@ function startAudioRecording() {
                 
                 // Start timer updates
                 recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
-                eventViewerInterval = setInterval(updateEventViewer, 10000); // <<< CHANGED: Update event viewer every 10 seconds
+                // <<< CHANGED: Update event viewer more frequently >>>
+                eventViewerInterval = setInterval(updateEventViewer, 1000); 
                 
                 // Update UI
                 updateRecordingUI(true, false);
@@ -753,7 +754,8 @@ function startAudioRecording() {
             
             // Start timer updates
             recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
-            eventViewerInterval = setInterval(updateEventViewer, 10000); // <<< CHANGED: Update event viewer every 10 seconds
+            // <<< CHANGED: Update event viewer more frequently >>>
+            eventViewerInterval = setInterval(updateEventViewer, 1000); 
             
             // Update UI
             updateRecordingUI(true, false);
@@ -3170,8 +3172,8 @@ function formatRelativeTime(eventTimeMs, currentTimeMs) {
     if (diffSeconds < 2) {
         return "Now";
     } else if (diffSeconds < 60) {
-        // <<< CHANGED: Add "about" >>>
-        return `about ${diffSeconds}s ago`; 
+        // <<< CHANGED: Removed "about " >>>
+        return `${diffSeconds}s ago`;
     } else { // >= 60 seconds
         const diffMinutes = Math.floor(diffSeconds / 60);
         return `${diffMinutes}m ago`;
@@ -3619,4 +3621,466 @@ function getCanvasCoordinatesFromPixelRect(pixelRect) {
 
    return canvasRect;
 }
+
+// *** NEW FUNCTION (Moved from app.js): Play Selected Event Audio Prep ***
+/**
+ * Prepares audio playback for a given event.
+ * Finds the event, ensures audio blob exists, decodes/caches the full audio,
+ * extracts the relevant segment, and sets up Web Audio API nodes.
+ * @param {object} selectedEvent - The event object to play audio for.
+ * @returns {Promise<object|null>} A promise resolving with { sourceNode, audioContext, segmentDuration } or null on failure.
+ */
+async function playSelectedEventAudio(selectedEvent) {
+    logMessage('PlayAudioPrep: Preparing audio for selected event...', 'DEBUG');
+
+    try {
+        // 1. Check preconditions (Event is passed in, check blob)
+        if (!selectedEvent) {
+            logMessage('PlayAudioPrep: Invalid event object provided.', 'ERROR');
+            return null;
+        }
+        if (!window.audioBlob) {
+            logMessage('PlayAudioPrep: No audio blob available for playback.', 'WARN');
+            return null;
+        }
+        if (selectedEvent.start_time_offset === undefined || selectedEvent.end_time_offset === undefined) {
+            logMessage(`PlayAudioPrep: Selected event ${selectedEvent.event_id} lacks required time offsets.`, 'ERROR');
+            return null;
+        }
+
+        // 2. Decode Full Audio (Use Cache)
+        if (!window.decodedFullAudioBuffer) {
+            logMessage('PlayAudioPrep: Decoding full audio blob for playback (first play)...', 'DEBUG');
+            try {
+                // Assume audio_tools.js provides decodeAudioBlob globally or it's defined elsewhere
+                if (typeof decodeAudioBlob !== 'function') throw new Error('decodeAudioBlob function not found.');
+                const buffer = await decodeAudioBlob(window.audioBlob);
+                window.decodedFullAudioBuffer = buffer;
+                logMessage('PlayAudioPrep: Full audio decoded and cached.', 'INFO');
+            } catch (decodeError) {
+                logMessage(`PlayAudioPrep: Error decoding full audio blob: ${decodeError.message}`, 'ERROR');
+                console.error('Audio Decoding Error:', decodeError);
+                window.decodedFullAudioBuffer = null; // Ensure it's null on error
+                return null;
+            }
+        } else {
+            logMessage('PlayAudioPrep: Using cached decoded full audio buffer.', 'DEBUG');
+        }
+
+        // Ensure buffer exists after attempting decode/cache check
+        if (!window.decodedFullAudioBuffer) {
+            logMessage('PlayAudioPrep: Decoded audio buffer is still null after checking cache/decode attempt.', 'ERROR');
+            return null;
+        }
+
+        // 3. Extract Segment
+        const startTimeSec = selectedEvent.start_time_offset / 1000;
+        const endTimeSec = selectedEvent.end_time_offset / 1000;
+        logMessage(`PlayAudioPrep: Extracting audio segment: ${startTimeSec.toFixed(3)}s - ${endTimeSec.toFixed(3)}s`, 'DEBUG');
+
+        // Assume audio_tools.js provides extractAudioSegment globally or it's defined elsewhere
+        if (typeof extractAudioSegment !== 'function') throw new Error('extractAudioSegment function not found.');
+        const segmentBuffer = extractAudioSegment(window.decodedFullAudioBuffer, startTimeSec, endTimeSec);
+
+        if (!segmentBuffer) {
+            logMessage('PlayAudioPrep: Failed to extract audio segment (returned null).', 'ERROR');
+            return null;
+        }
+        logMessage(`PlayAudioPrep: Segment extracted (Duration: ${segmentBuffer.duration.toFixed(3)}s).`, 'DEBUG');
+        const segmentDuration = segmentBuffer.duration;
+
+        // 4. Play Segment (Web Audio API)
+        logMessage('PlayAudioPrep: Setting up Web Audio API nodes...', 'DEBUG');
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createBufferSource();
+        source.buffer = segmentBuffer;
+
+        // Add gain node for potential future volume control
+        const gainNode = audioContext.createGain();
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        // Return the nodes and context for the caller to manage
+        logMessage('PlayAudioPrep: Audio nodes prepared successfully.', 'INFO');
+        return { sourceNode: source, audioContext: audioContext, segmentDuration: segmentDuration };
+
+    } catch (error) {
+        logMessage(`PlayAudioPrep: Unexpected error during audio preparation: ${error.message}`, 'ERROR');
+        console.error('Playback Error:', error);
+        return null; // Indicate failure
+    }
+}
+
+// *** REWRITTEN FUNCTION: Update Interactive Event Viewer ***
+/**
+ * Updates the interactive event viewer UL list with the latest drawing events.
+ */
+function updateEventViewer() {
+   // Target the new container div
+   const listElement = document.getElementById('interactive-event-list');
+   if (!listElement) {
+       logMessage('Interactive event list element (#interactive-event-list) not found.', 'ERROR');
+       return;
+   }
+
+   const recordedEvents = window.recordedEvents || {};
+   const drawingCategories = ['laser_pointer', 'bounding_box']; // Add other drawing event keys here
+   let allDrawingEvents = [];
+
+   // 1. Gather events (same as before)
+   drawingCategories.forEach(category => {
+       if (Array.isArray(recordedEvents[category])) {
+           recordedEvents[category].forEach(event => {
+               if (event && event.event_id && (event.start_time_offset !== undefined || event.time_offset !== undefined)) {
+                   event.category = category;
+                   event.sort_time = event.start_time_offset ?? event.time_offset;
+                   allDrawingEvents.push(event);
+               } else {
+                   logMessage(`Event viewer skipped invalid event in ${category}: Missing ID or time.`, 'WARN');
+               }
+           });
+       }
+   });
+
+   // 2. Sort OLD->NEW for numbering (same as before)
+   allDrawingEvents.sort((a, b) => a.sort_time - b.sort_time);
+
+   // 3. Assign tool numbers (same as before)
+   const toolCounters = {};
+   allDrawingEvents.forEach(event => {
+       const category = event.category;
+       if (drawingCategories.includes(category)) {
+           if (!toolCounters[category]) toolCounters[category] = 0;
+           toolCounters[category]++;
+           event.tool_number = toolCounters[category];
+       }
+   });
+
+   // 4. Sort NEW->OLD for display (same as before)
+   allDrawingEvents.sort((a, b) => b.sort_time - a.sort_time);
+
+   // 5. Build List Items (NEW Interactive Structure)
+   listElement.innerHTML = ''; // Clear previous items
+   const currentRecTime = isRecording ? getCurrentRecordingTime() : (allDrawingEvents[0]?.sort_time ?? 0);
+
+   if (allDrawingEvents.length === 0) {
+       const placeholder = document.createElement('div');
+       // Use Bootstrap list-group-item for consistency
+       placeholder.className = 'list-group-item disabled text-muted small py-1 px-2';
+       placeholder.textContent = 'No drawing events recorded yet...';
+       listElement.appendChild(placeholder);
+   } else {
+       allDrawingEvents.forEach(event => {
+           const listItem = document.createElement('div');
+           // Use Bootstrap classes for layout
+           listItem.className = 'list-group-item py-1 px-2 small d-flex justify-content-between align-items-center';
+           // Store event ID on the list item itself for potential future use
+           listItem.dataset.eventId = event.event_id;
+
+           // --- Create Event Description Span ---
+           const descriptionSpan = document.createElement('span');
+           descriptionSpan.className = 'event-description me-auto'; // Take up available space
+           let eventType = event.category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+           const relativeTime = formatRelativeTime(event.sort_time, currentRecTime);
+           const toolNumber = event.tool_number || '';
+           // Simple text formatting, adjust spacing/padding via CSS if needed
+           descriptionSpan.textContent = `${eventType} ${toolNumber} (${relativeTime})`;
+
+           // --- Create Button Group Span ---
+           const buttonGroupSpan = document.createElement('span');
+           buttonGroupSpan.className = 'event-actions';
+
+           // --- Create Play Button ---
+           const playButton = document.createElement('button');
+           playButton.type = 'button';
+           // Use Bootstrap icons
+           playButton.className = 'btn btn-sm btn-outline-success py-0 px-1 play-event-btn me-1';
+           playButton.innerHTML = '<i class="bi bi-play-fill"></i>';
+           playButton.title = 'Replay this event'; // Tooltip
+           playButton.dataset.eventId = event.event_id; // Link button to event
+
+           // --- Create Delete Button ---
+           const deleteButton = document.createElement('button');
+           deleteButton.type = 'button';
+           deleteButton.className = 'btn btn-sm btn-outline-danger py-0 px-1 delete-event-btn';
+           deleteButton.innerHTML = '<i class="bi bi-trash"></i>';
+           deleteButton.title = 'Delete this event'; // Tooltip
+           deleteButton.dataset.eventId = event.event_id; // Link button to event
+
+           // --- Assemble the List Item ---
+           buttonGroupSpan.appendChild(playButton);
+           buttonGroupSpan.appendChild(deleteButton);
+
+           listItem.appendChild(descriptionSpan);
+           listItem.appendChild(buttonGroupSpan);
+
+           // Add to the main list container
+           listElement.appendChild(listItem);
+
+           // REMOVED: Active class logic based on window.selectedEventId
+       });
+   }
+}
+
+// *** NEW FUNCTION: Delete Specific Drawing Event ***
+/**
+ * Deletes a specific drawing event identified by its event_id.
+ * @param {string} eventId - The unique ID of the event to delete.
+ */
+function deleteSpecificDrawingEvent(eventId) {
+   if (!window.recordedEvents || !eventId) {
+       logMessage('Cannot delete event: No recorded events or no event ID provided.', 'WARN');
+       return;
+   }
+
+   let eventFound = false;
+   const categories = Object.keys(window.recordedEvents);
+
+   for (const category of categories) {
+       const eventArray = window.recordedEvents[category];
+       if (Array.isArray(eventArray)) {
+           const indexToRemove = eventArray.findIndex(event => event && event.event_id === eventId);
+
+           if (indexToRemove !== -1) {
+               const removedEvent = eventArray.splice(indexToRemove, 1)[0];
+               logMessage(`Deleted event (ID: ${eventId}, Type: ${category}, Timestamp: ${removedEvent?.sort_time})`, 'INFO');
+               eventFound = true;
+               break; // Assume event IDs are unique across categories
+           }
+       }
+   }
+
+   if (eventFound) {
+       updateEventViewer(); // Refresh the list
+       // Update overall button states (e.g., disable replay if last event deleted)
+       if (typeof window.updateButtonStates === 'function') {
+           window.updateButtonStates();
+       }
+   } else {
+       logMessage(`Could not find event with ID ${eventId} to delete.`, 'WARN');
+   }
+}
+// Expose the new delete function globally
+window.deleteSpecificDrawingEvent = deleteSpecificDrawingEvent;
+
+// *** NEW FUNCTION: Replay Event From Row ***
+/**
+ * Replays the audio and visual drawing for a specific event, triggered from the event list.
+ * @param {string} eventId - The unique ID of the event to replay.
+ */
+async function replayEventFromRow(eventId) {
+   logMessage(`SegmentReplay: Starting replay for event ID: ${eventId}`, 'INFO');
+
+   // --- Find the event data ---
+   let selectedEvent = null;
+   if (window.recordedEvents) {
+       const categoriesToSearch = Object.keys(window.recordedEvents);
+       for (const category of categoriesToSearch) {
+           if (Array.isArray(window.recordedEvents[category])) {
+               selectedEvent = window.recordedEvents[category].find(e => e && e.event_id === eventId);
+               if (selectedEvent) break;
+           }
+       }
+   }
+
+   if (!selectedEvent) {
+       logMessage(`SegmentReplay: Could not find event data for ID: ${eventId}`, 'ERROR');
+       alert('Could not find the event data to replay.');
+       return;
+   }
+
+   // --- Indicate Replay State ---
+   // Optional: Add a visual indicator to the specific row being played
+   const listItem = document.querySelector(`#interactive-event-list [data-event-id="${eventId}"]`);
+   const playButton = listItem?.querySelector('.play-event-btn');
+   const originalButtonHTML = playButton ? playButton.innerHTML : '<i class="bi bi-play-fill"></i>';
+   if (playButton) {
+       playButton.disabled = true;
+       playButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+   }
+
+   // --- Prepare Audio (using function now in this file) ---
+   let audioPrepResult = null;
+   if (window.audioBlob) { // Only prepare if audio exists
+       audioPrepResult = await playSelectedEventAudio(selectedEvent);
+       if (!audioPrepResult) {
+           logMessage('SegmentReplay: Audio preparation failed. Continuing with visual replay only.', 'WARN');
+           // Don't alert here, maybe the user only wants visuals or there's no audio segment
+       }
+   } else {
+       logMessage('SegmentReplay: No audio blob found, proceeding with visual replay only.', 'INFO');
+   }
+
+   const sourceNode = audioPrepResult?.sourceNode;
+   const audioContext = audioPrepResult?.audioContext;
+   // Use event duration for visuals, fallback to audio duration if event times invalid
+   const eventStartTimeMs = selectedEvent.start_time_offset;
+   const eventEndTimeMs = selectedEvent.end_time_offset;
+   let durationMs = (eventEndTimeMs !== undefined && eventStartTimeMs !== undefined) ? (eventEndTimeMs - eventStartTimeMs) : (audioPrepResult?.segmentDuration * 1000 || 1000); // Default 1s visual if no times
+
+   // --- Setup Visual Replay ---
+   let animationFrameId = null;
+   const visualStartTime = Date.now(); // Timestamp when visuals *actually* start
+
+   // --- Cleanup Function ---
+   const cleanupReplay = () => {
+       logMessage(`SegmentReplay: Cleaning up replay for event ${eventId}...`, 'DEBUG');
+       if (animationFrameId) {
+           cancelAnimationFrame(animationFrameId);
+           animationFrameId = null;
+       }
+       // Stop audio and close context if they exist
+       if (sourceNode && audioContext && audioContext.state !== 'closed') {
+           try { sourceNode.stop(); } catch (e) {/* Ignore error if already stopped */}
+           audioContext.close().catch(e => console.warn('Audio context close error on cleanup:', e));
+       }
+       // Clean up specific visuals
+       if (window.DrawingTools) {
+           if (selectedEvent.category === 'bounding_box') window.DrawingTools.removeReplayBoundingBox();
+           if (selectedEvent.category === 'laser_pointer') window.DrawingTools.clearLaserTrail();
+       }
+       // Reset button state
+       if (playButton) {
+           playButton.innerHTML = originalButtonHTML;
+           playButton.disabled = false;
+       }
+   };
+
+   // Attach cleanup to audio end if audio is playing
+   if (sourceNode) {
+       sourceNode.onended = () => {
+           logMessage(`SegmentReplay: Audio playback finished naturally for ${eventId}.`, 'INFO');
+           // Visuals might finish slightly after audio due to loop timing,
+           // so cleanup might already be triggered by the visual loop timeout.
+           // Call cleanup here to ensure audio resources are released.
+           cleanupReplay();
+       };
+   }
+
+   // --- Visual Animation Loop ---
+   const animateVisuals = () => {
+       const elapsedSegmentMs = Date.now() - visualStartTime;
+
+       // Stop condition (based on duration)
+       if (elapsedSegmentMs >= durationMs) {
+           logMessage(`SegmentReplay: Visual animation loop finished for ${eventId} based on duration.`, 'DEBUG');
+           cleanupReplay(); // Trigger cleanup when visuals finish
+           return;
+       }
+
+       // Category-specific drawing updates
+       try {
+           if (selectedEvent.category === 'bounding_box') {
+               const intermediateCoords = selectedEvent.intermediate_coords || [];
+               let lastCoordToDraw = null;
+               // Find the latest coord within the elapsed time
+               for (const coord of intermediateCoords) {
+                   if (coord.timeOffset === undefined || coord.timeOffset < eventStartTimeMs) continue;
+                   if ((coord.timeOffset - eventStartTimeMs) <= elapsedSegmentMs) {
+                       lastCoordToDraw = coord;
+                   } else {
+                       break; // Points are sorted by time
+                   }
+               }
+               // If no intermediate point is ready yet, use start_coords if available
+               if (!lastCoordToDraw && selectedEvent.start_coords && eventStartTimeMs !== undefined && (eventStartTimeMs - eventStartTimeMs) <= elapsedSegmentMs) {
+                    lastCoordToDraw = selectedEvent.start_coords;
+               }
+
+               // Draw the latest coordinate found
+               if (lastCoordToDraw && window.DrawingTools?.updateReplayBoundingBox) {
+                   const canvasCoord = getCanvasCoordinatesFromPixelRect(lastCoordToDraw);
+                   if (canvasCoord) {
+                       window.DrawingTools.updateReplayBoundingBox(canvasCoord, selectedEvent.mode);
+                   } else {
+                       logMessage('SegmentReplay (BBox): Failed coord conversion.', 'TRACE');
+                   }
+               } else if (intermediateCoords.length > 0 && !window.DrawingTools?.updateReplayBoundingBox) {
+                   logMessage('SegmentReplay: updateReplayBoundingBox func missing.', 'ERROR');
+                   throw new Error('Visual update func missing.');
+               }
+           } else if (selectedEvent.category === 'laser_pointer') {
+               const points = selectedEvent.points || [];
+               let pointsToDraw = [];
+               // Collect all points within the elapsed time
+               for (const point of points) {
+                   if (point.timeOffset === undefined || point.timeOffset < eventStartTimeMs) continue;
+                   if ((point.timeOffset - eventStartTimeMs) <= elapsedSegmentMs) {
+                       pointsToDraw.push(point);
+                   } else {
+                       break; // Points are sorted
+                   }
+               }
+               // Draw the collected points
+               if (pointsToDraw.length > 0) {
+                   if (window.DrawingTools?.addToLaserTrail && window.DrawingTools?.drawLaserTrail) {
+                       // Clear previous frame's trail before drawing new points for this frame
+                       // Note: This assumes addToLaserTrail just adds to an array, and drawLaserTrail renders it.
+                       // If addToLaserTrail draws directly, this needs adjustment.
+                       // window.DrawingTools.clearLaserTrail(); // Might cause flicker, depends on implementation
+
+                       pointsToDraw.forEach(point => {
+                           const canvasPoint = getCanvasCoordinatesFromPixelPoint(point);
+                           if (canvasPoint) {
+                               window.DrawingTools.addToLaserTrail(canvasPoint.x, canvasPoint.y);
+                           } else {
+                               logMessage('SegmentReplay (Laser): Failed coord conversion.', 'TRACE');
+                           }
+                       });
+                       // Explicitly draw the accumulated trail for this frame
+                       window.DrawingTools.drawLaserTrail();
+                   } else {
+                       logMessage('SegmentReplay: Laser trail funcs missing.', 'ERROR');
+                       throw new Error('Visual update funcs missing.');
+                   }
+               }
+           }
+       } catch (visualError) {
+           logMessage(`SegmentReplay: Error during visual update for ${eventId}: ${visualError.message}`, 'ERROR');
+           console.error("Visual Replay Error:", visualError);
+           cleanupReplay(); // Stop everything on visual error
+           return;
+       }
+
+       // Request next frame
+       animationFrameId = requestAnimationFrame(animateVisuals);
+   };
+
+   // Initialize visuals based on category before starting loop/audio
+   if (selectedEvent.category === 'bounding_box' && window.DrawingTools?.startReplayBoundingBox) {
+       // Draw the starting box immediately
+       const startCoords = selectedEvent.start_coords;
+       if (startCoords) {
+           const canvasCoord = getCanvasCoordinatesFromPixelRect(startCoords);
+           if (canvasCoord) {
+               window.DrawingTools.startReplayBoundingBox(canvasCoord.left, canvasCoord.top, selectedEvent.mode);
+           } else { logMessage('SegmentReplay: Failed BBox start coord conversion.', 'WARN'); }
+       } else { logMessage('SegmentReplay: BBox event missing start_coords.', 'WARN'); }
+   } else if (selectedEvent.category === 'laser_pointer' && window.DrawingTools?.startLaserTrail) {
+       window.DrawingTools.startLaserTrail(); // Initialize trail state
+   }
+
+   // --- Start Playback ---
+   try {
+       if (sourceNode) {
+           logMessage(`SegmentReplay: Starting audio playback for ${eventId}...`, 'DEBUG');
+           sourceNode.start(0);
+       }
+       logMessage(`SegmentReplay: Starting visual animation loop for ${eventId}...`, 'DEBUG');
+       animationFrameId = requestAnimationFrame(animateVisuals);
+   } catch (startError) {
+       logMessage(`SegmentReplay: Error starting playback for ${eventId}: ${startError.message}`, 'ERROR');
+       console.error("Playback Start Error:", startError);
+       cleanupReplay(); // Cleanup if start fails
+   }
+}
+// Expose the new replay function globally
+window.replayEventFromRow = replayEventFromRow;
+
+// *** REMOVED FUNCTION: Replay Selected Event Segment ***
+// async function replaySelectedEventSegment() { ... }
+// window.replaySelectedEventSegment = replaySelectedEventSegment;
+
+// --- Helper for Coordinate Conversion (Example - Needs Actual Implementation based on canvas.js) ---
+// ... coordinate conversion functions remain unchanged ...
 
